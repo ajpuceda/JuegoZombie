@@ -16,12 +16,13 @@ Juego estilo GTA con zombis, hecho **100% en WebGL puro** — un solo archivo HT
 | Tecla | Función |
 |---|---|
 | `W A S D` | Moverse (también flechas) |
+| `Ratón (solo mover)` | **Girar cámara — estilo Minecraft, sin clics** |
 | `Shift` | Correr |
-| `Ratón (arrastra)` | Girar la cámara |
 | `Rueda del ratón` | Zoom |
 | `Clic izq. / Espacio` | Disparar (mantén para automáticas) |
 | `1 - 4` | Armas: Pistola (∞) · SMG · Fusil · Escopeta |
 | `E` | Entrar a tiendas / comprar |
+| `ESC` | Pausa (clic para volver) |
 | `P` | Pausa |
 | `M` | Sonido on/off |
 | `H` | Mostrar/ocultar ayuda |
@@ -36,7 +37,7 @@ Juego estilo GTA con zombis, hecho **100% en WebGL puro** — un solo archivo HT
 
 ## 🛠️ Tecnología
 
-WebGL crudo con sombreadores propios, matemática de matrices escrita a mano, render low-res pixelado estilo retro y motor de juego completo (IA de zombis con evasión de obstáculos, raycast de balas, colisiones AABB) en ~1000 líneas de JavaScript sin ningún framework.
+WebGL crudo con sombreadores propios, matemática de matrices escrita a mano, render low-res pixelado estilo retro y motor de juego completo (IA de zombis con evasión de obstáculos, raycast de balas, colisiones AABB, cámara con pointer lock estilo Minecraft) en ~1000 líneas de JavaScript sin ningún framework.
 
 ---
 
