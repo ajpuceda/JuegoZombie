@@ -191,6 +191,7 @@ function T(x,y,z){ return new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, x,y,z,1])
 function S(x,y,z){ return new Float32Array([x,0,0,0, 0,y,0,0, 0,0,z,0, 0,0,0,1]); }
 function Ry(a){ const c=Math.cos(a), s=Math.sin(a); return new Float32Array([c,0,-s,0, 0,1,0,0, s,0,c,0, 0,0,0,1]); }
 function Rx(a){ const c=Math.cos(a), s=Math.sin(a); return new Float32Array([1,0,0,0, 0,c,s,0, 0,-s,c,0, 0,0,0,1]); }
+function Rz(a){ const c=Math.cos(a), s=Math.sin(a); return new Float32Array([c,s,0,0, -s,c,0,0, 0,0,1,0, 0,0,0,1]); }
 const I4 = new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]);
 /* normal matrix for (yaw, rx) rotation */
 function nmat(yaw, rx){
@@ -273,6 +274,63 @@ const PALETTE = [
 function genCity(){
   const rnd = mulberry(20261112);
   blocks.length = 0; obstacles.length = 0; buildings.length = 0; trees.length = 0; shops.length = 0;
+
+  // ventanas iluminadas + puerta de un edificio (precalculado para dibujar rápido)
+  function addDetail(b, withDoor){
+    b.win = [];
+    const floors = Math.max(1, Math.min(6, Math.floor((b.sy - 3.4) / 2.6)));
+    const faces = [
+      { ax: 'x', len: b.sx, fx: 0, fz: b.sz / 2 + 0.06 },
+      { ax: 'x', len: b.sx, fx: 0, fz: -b.sz / 2 - 0.06 },
+      { ax: 'z', len: b.sz, fx: b.sx / 2 + 0.06, fz: 0 },
+      { ax: 'z', len: b.sz, fx: -b.sx / 2 - 0.06, fz: 0 },
+    ];
+    for (const fc of faces){
+      const cols = Math.max(1, Math.min(3, Math.floor((fc.len - 2) / 2.6)));
+      for (let f = 0; f < floors; f++){
+        const wy = 2.3 + f * 2.6;
+        if (wy + 1.5 > b.sy - 0.8) continue;
+        for (let c = 0; c < cols; c++){
+          const off = (c - (cols - 1) / 2) * 2.6;
+          const lit = rnd() < 0.28; // ventanas encendidas al azar
+          if (fc.ax === 'x') b.win.push({ x: b.cx + off, y: wy, z: b.cz + fc.fz, sx: 1.1, sy: 1.5, sz: 0.12, lit });
+          else b.win.push({ x: b.cx + fc.fx, y: wy, z: b.cz + off, sx: 0.12, sy: 1.5, sz: 1.1, lit });
+        }
+      }
+    }
+    if (withDoor){
+      const s = rnd() < 0.5 ? 1 : -1;
+      if (rnd() < 0.5) b.door = { x: b.cx + (rnd() - 0.5) * (b.sx - 4), y: 1.15, z: b.cz + s * (b.sz / 2 + 0.08), sx: 1.5, sy: 2.3, sz: 0.16 };
+      else b.door = { x: b.cx + s * (b.sx / 2 + 0.08), y: 1.15, z: b.cz + (rnd() - 0.5) * (b.sz - 4), sx: 0.16, sy: 2.3, sz: 1.5 };
+    }
+  }
+
+  // árbol con ramas (matrices precalculadas) y copa volumétrica de varias cajas
+  function makeTree(x, z, h){
+    const t = { x, z, h, branches: [], canopy: [] };
+    const nb2 = 3 + Math.floor(rnd() * 2);
+    for (let i = 0; i < nb2; i++){
+      const yaw = rnd() * Math.PI * 2, tilt = -(0.45 + rnd() * 0.6);
+      const len = 1.3 + rnd() * 1.2, th = 0.14 + rnd() * 0.08;
+      const dir = [Math.sin(yaw) * Math.cos(tilt), -Math.sin(tilt), Math.cos(yaw) * Math.cos(tilt)];
+      const cx = x + dir[0] * len / 2, cy = h * 0.85 + dir[1] * len / 2, cz = z + dir[2] * len / 2;
+      t.branches.push({
+        M: mul(T(cx, cy, cz), mul(Ry(yaw), mul(Rx(tilt), S(th, th, len)))),
+        N: nmat(yaw, tilt), col: [0.33, 0.23, 0.13],
+      });
+    }
+    const greens = [[0.22,0.44,0.18],[0.27,0.50,0.20],[0.30,0.55,0.22],[0.35,0.52,0.18]];
+    const nc = 3 + Math.floor(rnd() * 2);
+    for (let i = 0; i < nc; i++){
+      t.canopy.push({
+        ox: (rnd() - 0.5) * 1.8, oy: 1.5 + rnd() * 1.6, oz: (rnd() - 0.5) * 1.8,
+        sx: 1.7 + rnd() * 1.5, sy: 1.2 + rnd() * 1.1, sz: 1.7 + rnd() * 1.5,
+        col: greens[Math.floor(rnd() * greens.length)],
+      });
+    }
+    return t;
+  }
+
   for (let i = 0; i < NB; i++) for (let j = 0; j < NB; j++){
     const x0 = block0 + i * CELL, z0 = block0 + j * CELL;
     const cx = x0 + BS/2, cz = z0 + BS/2;
@@ -289,13 +347,15 @@ function genCity(){
     if (b.type === 'park'){
       for (let t = 0; t < 5; t++){
         const tx = b.x0 + 5 + rnd() * (BS - 10), tz = b.z0 + 5 + rnd() * (BS - 10);
-        trees.push({ x: tx, z: tz, h: 2.2 + rnd() * 1.4 });
+        trees.push(makeTree(tx, tz, 2.2 + rnd() * 1.4));
         obstacles.push({ x0: tx - 0.6, z0: tz - 0.6, x1: tx + 0.6, z1: tz + 0.6, h: 3 });
       }
     } else if (b.type === 'gunshop' || b.type === 'medshop'){
       const w = 20, d = 15, h = 7;
       const col = b.type === 'gunshop' ? [0.55, 0.3, 0.18] : [0.9, 0.9, 0.92];
-      buildings.push({ cx: b.cx, cy: h/2, cz: b.cz, sx: w, sy: h, sz: d, col });
+      const nb2 = { cx: b.cx, cy: h/2, cz: b.cz, sx: w, sy: h, sz: d, col };
+      addDetail(nb2, false); // la puerta de las tiendas ya la dibuja el render de shops
+      buildings.push(nb2);
       obstacles.push({ x0: b.cx - w/2, z0: b.cz - d/2, x1: b.cx + w/2, z1: b.cz + d/2, h });
       const kind = b.type === 'gunshop' ? 'gun' : 'med';
       shops.push({ x: b.cx, z: b.cz, kind, doorX: b.cx, doorZ: b.cz + d/2 + 2 });
@@ -308,7 +368,9 @@ function genCity(){
         const px = b.x0 + 3 + w/2 + rnd() * Math.max(0.5, BS - 6 - w);
         const pz = b.z0 + 3 + d/2 + rnd() * Math.max(0.5, BS - 6 - d);
         const col = PALETTE[Math.floor(rnd() * PALETTE.length)];
-        buildings.push({ cx: px, cy: h/2, cz: pz, sx: w, sy: h, sz: d, col });
+        const nb2 = { cx: px, cy: h/2, cz: pz, sx: w, sy: h, sz: d, col };
+        addDetail(nb2, true);
+        buildings.push(nb2);
         obstacles.push({ x0: px - w/2, z0: pz - d/2, x1: px + w/2, z1: pz + d/2, h });
       }
     }
@@ -353,6 +415,8 @@ const WEAPONS = {
 const WLIST = ['pistol', 'smg', 'rifle', 'shotgun'];
 
 let player, zombies, particles, tracers, mode, wave, kills, running, paused;
+let leaves = [], birds = [], leafT = 0; // hojas cayendo + pájaros volando
+let saveT = 3; // autoguardado cada 3 s
 let spawnLeft, aliveCap = 24, spawnTimer, betweenT, msgT, bannerT, curInteract;
 let lastFire = -9, lastHitT = -9, camYaw, camPitch, camDist, mouseDown, timeNow = 0;
 let fpMode = true, fov = 1.05; // primera persona por defecto — tecla V alterna 1ª/3ª persona
@@ -364,6 +428,13 @@ function reset(){
     anim: 0, walkAmt: 0, muzzleT: 0, lastFire: -9,
   };
   zombies = []; particles = []; tracers = [];
+  leaves = []; leafT = 0; saveT = 3;
+  birds = [];
+  for (let i = 0; i < 7; i++) birds.push({
+    cx: (Math.random() - 0.5) * 110, cz: (Math.random() - 0.5) * 110,
+    r: 16 + Math.random() * 34, h: 17 + Math.random() * 13,
+    spd: 0.25 + Math.random() * 0.35, yaw: Math.random() * 6.28, ph: Math.random() * 6.28,
+  });
   mode = 'city'; wave = 0; kills = 0; paused = false;
   spawnLeft = 0; spawnTimer = 0; betweenT = 0; curInteract = null;
   camYaw = Math.PI; camPitch = -0.32; camDist = 6;
@@ -381,6 +452,44 @@ function startWave(){
   sfx.wave();
 }
 
+/* ============ Guardado automático (localStorage) ============ */
+const SAVE_KEY = 'zc3d_save_v1';
+function lsGet(k){ try { return window.localStorage.getItem(k); } catch (e){ return null; } }
+function lsSet(k, v){ try { window.localStorage.setItem(k, v); return true; } catch (e){ return false; } }
+function lsDel(k){ try { window.localStorage.removeItem(k); } catch (e){} }
+function saveGame(){
+  if (mode !== 'city' || !player) return;
+  lsSet(SAVE_KEY, JSON.stringify({
+    v: 1, wave, kills,
+    money: player.money, hp: player.hp, armor: player.armor,
+    weapons: player.weapons, ammo: player.ammo, cur: player.cur,
+    x: Math.round(player.x * 10) / 10, z: Math.round(player.z * 10) / 10,
+    camYaw: Math.round(camYaw * 100) / 100,
+  }));
+}
+function loadGame(){
+  let s = null;
+  try { s = JSON.parse(lsGet(SAVE_KEY) || 'null'); } catch (e){ s = null; }
+  if (!s || s.v !== 1 || typeof s.wave !== 'number') return false;
+  try {
+    player.money = s.money || 150;
+    player.hp = Math.max(1, Math.min(100, s.hp || 100));
+    player.armor = Math.max(0, Math.min(100, s.armor || 0));
+    player.weapons = (s.weapons && s.weapons.pistol) ? s.weapons : { pistol: true };
+    player.ammo = s.ammo || { smg: 0, rifle: 0, shotgun: 0 };
+    player.cur = player.weapons[s.cur] ? s.cur : 'pistol';
+    player.x = (typeof s.x === 'number') ? s.x : 0;
+    player.z = (typeof s.z === 'number') ? s.z : 24;
+    camYaw = (typeof s.camYaw === 'number') ? s.camYaw : Math.PI;
+    kills = s.kills || 0;
+    wave = Math.max(1, s.wave);
+    spawnLeft = 5 + wave * 3;
+    banner('OLEADA ' + wave + ' — ¡PARTIDA CARGADA!', 2.2);
+    updHUD(true);
+    return true;
+  } catch (e){ return false; }
+}
+
 /* ============ Input ============ */
 const keys = {};
 window.addEventListener('keydown', (e) => {
@@ -391,6 +500,7 @@ window.addEventListener('keydown', (e) => {
   if (running && e.code === 'KeyP'){
     paused = !paused;
     document.getElementById('pauza').style.display = paused ? 'block' : 'none';
+    saveGame();
     return;
   }
   if (!running || paused) return;
@@ -439,6 +549,7 @@ document.addEventListener('pointerlockchange', () => {
   if (!document.pointerLockElement && running && !paused){
     paused = true;
     document.getElementById('pauza').style.display = 'block';
+    saveGame();
   }
 });
 window.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -762,14 +873,41 @@ function update(dt){
   // regen
   if (timeNow - lastHitT > 5 && player.hp < 100) player.hp = Math.min(100, player.hp + 3 * dt);
 
-  // fire held (auto)
-  if (mouseDown || keys.Space){
+  // fire held (auto) — SOLO clic del ratón; Espacio es solo para saltar
+  if (mouseDown){
     const w = WEAPONS[player.cur];
-    if (w.auto || keys.Space) tryFire(true);
+    if (w.auto) tryFire(true);
   }
+
+  // autoguardado cada 3 s
+  saveT -= dt;
+  if (saveT <= 0){ saveT = 3; saveGame(); }
 
   // zombies & waves only in city
   if (mode === 'city'){
+    // pájaros girando sobre la ciudad
+    for (const b of birds) b.yaw += b.spd * dt;
+    // hojas cayendo de los árboles
+    leafT -= dt;
+    if (leafT <= 0 && trees.length){
+      leafT = 0.3;
+      if (leaves.length < 60){
+        const t = trees[Math.floor(Math.random() * trees.length)];
+        leaves.push({
+          x: t.x + (Math.random() - 0.5) * 2.4, y: t.h + 1.6 + Math.random() * 1.6, z: t.z + (Math.random() - 0.5) * 2.4,
+          vy: -(0.55 + Math.random() * 0.5), phase: Math.random() * 6.28, rot: Math.random() * 6.28,
+          col: [[0.55,0.48,0.14],[0.42,0.50,0.16],[0.62,0.40,0.10]][Math.floor(Math.random() * 3)],
+        });
+      }
+    }
+    for (let i = leaves.length - 1; i >= 0; i--){
+      const l = leaves[i];
+      l.y += l.vy * dt;
+      l.x += Math.sin(timeNow * 2.2 + l.phase) * 0.7 * dt;
+      l.z += Math.cos(timeNow * 1.7 + l.phase) * 0.5 * dt;
+      l.rot += dt * 2.5;
+      if (l.y < 0.06) leaves.splice(i, 1);
+    }
     updateZombies(dt);
     const alive = zombies.filter(z => z.state !== 'dying').length;
     if (spawnLeft > 0){
@@ -847,6 +985,7 @@ function banner(t, dur){
 }
 function gameOver(){
   running = false;
+  lsDel(SAVE_KEY); // morir borra la partida guardada — se empieza de cero
   document.getElementById('gostats').innerHTML =
     'Sobreviviste hasta la oleada: <b>' + wave + '</b><br>Zombis eliminados: <b>' + kills + '</b><br>Dinero recogido: <b>$' + player.money + '</b>';
   document.getElementById('go').style.display = 'flex';
@@ -993,13 +1132,32 @@ function render(){
         }
       }
     }
-    // buildings
-    for (const b of buildings) box(b.cx, b.cy, b.cz, b.sx, b.sy, b.sz, 0, b.col);
-    // trees
-    for (const t of trees){
-      box(t.x, t.h / 2, t.z, 0.5, t.h, 0.5, 0, [0.4, 0.28, 0.15]);
-      box(t.x, t.h + 1.1, t.z, 2.8, 2.2, 2.8, 0, [0.25, 0.5, 0.22]);
+    // buildings — con ventanas y puerta (LOD: solo cerca)
+    for (const b of buildings){
+      box(b.cx, b.cy, b.cz, b.sx, b.sy, b.sz, 0, b.col);
+      if (Math.hypot(b.cx - eye[0], b.cz - eye[2]) < 75){
+        if (b.door) box(b.door.x, b.door.y, b.door.z, b.door.sx, b.door.sy, b.door.sz, 0, [0.22, 0.14, 0.09]);
+        for (const w of b.win) box(w.x, w.y, w.z, w.sx, w.sy, w.sz, 0, w.lit ? [0.98, 0.87, 0.55] : [0.34, 0.44, 0.56], w.lit);
+      }
     }
+    // trees — tronco, ramas y copa volumétrica
+    for (const t of trees){
+      box(t.x, t.h * 0.45, t.z, 0.34, t.h * 0.9, 0.34, 0, [0.36, 0.25, 0.14]);
+      for (const br of t.branches) drawM(br.M, br.N, br.col, false);
+      for (const c of t.canopy) box(t.x + c.ox, t.h + c.oy, t.z + c.oz, c.sx, c.sy, c.sz, 0, c.col);
+    }
+    // pájaros — cuerpo + dos alas que aletean
+    for (const b of birds){
+      const px = b.cx + Math.cos(b.yaw) * b.r, pz = b.cz + Math.sin(b.yaw) * b.r;
+      const py = b.h + Math.sin(b.yaw * 3 + b.ph) * 1.5;
+      const heading = b.yaw + Math.PI / 2;
+      const flap = Math.sin(timeNow * 9 + b.ph) * 0.55;
+      drawM(mul(T(px, py, pz), mul(Ry(heading), S(0.28, 0.1, 0.55))), nmat(heading, 0), [0.12, 0.12, 0.16], false);
+      for (const s of [-1, 1])
+        drawM(mul(T(px, py, pz), mul(Ry(heading), mul(Rz(flap * s), mul(T(s * 0.42, 0, 0), S(0.8, 0.05, 0.3))))), nmat(heading, 0), [0.16, 0.16, 0.2], false);
+    }
+    // hojas cayendo
+    for (const l of leaves) box(l.x, l.y, l.z, 0.2, 0.04, 0.26, l.rot, l.col);
     // shops: sign + door + awning
     for (const s of shops){
       const isGun = s.kind === 'gun';
@@ -1125,6 +1283,7 @@ document.getElementById('playbtn').addEventListener('click', () => {
   document.getElementById('start').style.display = 'none';
   running = true;
   reset();
+  loadGame(); // continúa la partida guardada si existe
 });
 document.getElementById('restartbtn').addEventListener('click', () => {
   document.getElementById('go').style.display = 'none';
@@ -1134,6 +1293,7 @@ document.getElementById('restartbtn').addEventListener('click', () => {
 running = false;
 player = { x: 0, z: 24, y: 0, vy: 0, yawVis: Math.PI, hp: 100, armor: 0, money: 150, weapons: { pistol: true }, cur: 'pistol', ammo: { smg: 0, rifle: 0, shotgun: 0 }, anim: 0, walkAmt: 0, muzzleT: 0, lastFire: -9 };
 camYaw = Math.PI; camPitch = -0.32; camDist = 6;
+if (lsGet(SAVE_KEY)) document.getElementById('playbtn').textContent = 'CONTINUAR';
 genCity();
 </script>
 </body>
