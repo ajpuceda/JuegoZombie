@@ -20,7 +20,8 @@ Juego estilo GTA con zombis, hecho **100% en WebGL puro** — un solo archivo HT
 | `V` | **Cámara 1ª / 3ª persona** (por defecto: 1ª persona) |
 | `Shift` | Correr |
 | `Rueda del ratón` | Zoom (FOV en 1ª persona) |
-| `Clic izq. / Espacio` | Disparar (mantén para automáticas) |
+| `Clic izq.` | Disparar (mantén para automáticas) |
+| `Espacio` | **Saltar** (mantén = saltos encadenados) |
 | `1 - 4` | Armas: Pistola (∞) · SMG · Fusil · Escopeta |
 | `E` | Entrar a tiendas / comprar |
 | `ESC` | Pausa (clic para volver) |
@@ -31,6 +32,8 @@ Juego estilo GTA con zombis, hecho **100% en WebGL puro** — un solo archivo HT
 ## 🧟 Características
 
 - **Cámara en primera persona** con arma visible y balanceo al andar (V = cambiar a 3ª persona)
+- **Salto con Espacio** — física de gravedad, saltos encadenados estilo Minecraft
+- **Gráficos suaves**: antialiasing, resolución más alta y luz continua (sin bandas planas)
 - Ciudad 3D grande: calles, edificios, parques y dos tiendas a las que puedes entrar
 - Zombis de 3 tipos (caminante, corredor y bruto) en oleadas infinitas, cada vez más difíciles
 - 4 armas que se compran con el dinero de los zombis eliminados
@@ -39,7 +42,7 @@ Juego estilo GTA con zombis, hecho **100% en WebGL puro** — un solo archivo HT
 
 ## 🛠️ Tecnología
 
-WebGL crudo con sombreadores propios, matemática de matrices escrita a mano, render low-res pixelado estilo retro y motor de juego completo (IA de zombis con evasión de obstáculos, raycast de balas, colisiones AABB, cámara con pointer lock estilo Minecraft) en ~1000 líneas de JavaScript sin ningún framework.
+WebGL crudo con sombreadores propios, matemática de matrices escrita a mano y motor de juego completo (IA de zombis con evasión de obstáculos, raycast de balas, colisiones AABB, cámara con pointer lock estilo Minecraft, física de salto) en ~1000 líneas de JavaScript sin ningún framework.
 
 ---
 
