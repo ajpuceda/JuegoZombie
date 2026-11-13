@@ -1,3 +1,4 @@
+
 <!doctype html>
 <html lang="es">
 <head>
@@ -274,6 +275,7 @@ const PALETTE = [
 function genCity(){
   const rnd = mulberry(20261112);
   blocks.length = 0; obstacles.length = 0; buildings.length = 0; trees.length = 0; shops.length = 0;
+  cars.length = 0;
 
   // ventanas iluminadas + puerta de un edificio (precalculado para dibujar rápido)
   function addDetail(b, withDoor){
@@ -375,6 +377,28 @@ function genCity(){
       }
     }
   }
+  // coches aparcados junto a las aceras (aleatorio determinista)
+  const CARCOLS = [[0.75,0.16,0.16],[0.18,0.35,0.60],[0.85,0.70,0.20],[0.20,0.55,0.30],[0.80,0.80,0.82],[0.50,0.20,0.50],[0.90,0.45,0.10]];
+  let attempts = 0;
+  while (cars.length < 18 && attempts < 260){
+    attempts++;
+    const vertical = rnd() < 0.5;
+    const si = Math.floor(rnd() * (NB + 1));
+    const line = -HALF + ST / 2 + si * CELL;
+    const side = (rnd() < 0.5 ? 1 : -1) * (ST / 2 - 2.2);
+    const along = -HALF + 8 + rnd() * (CITY - 16);
+    let x, z, yaw;
+    if (vertical){ x = line + side; z = along; yaw = rnd() < 0.5 ? 0 : Math.PI; }
+    else { z = line + side; x = along; yaw = rnd() < 0.5 ? Math.PI / 2 : -Math.PI / 2; }
+    if (Math.hypot(x - 0, z - 24) < 10) continue; // libre en el punto de inicio
+    let bad = false;
+    for (const b of obstacles){ if (x > b.x0 - 2.6 && x < b.x1 + 2.6 && z > b.z0 - 2.6 && z < b.z1 + 2.6){ bad = true; break; } }
+    if (!bad) for (const c of cars){ if (Math.hypot(c.x - x, c.z - z) < 7){ bad = true; break; } }
+    if (bad) continue;
+    const car = { x, z, yaw, vx: 0, vz: 0, driving: false, obs: null, col: CARCOLS[Math.floor(rnd() * CARCOLS.length)] };
+    carObsOn(car);
+    cars.push(car);
+  }
   // boundary walls
   const bw = 2.5;
   obstacles.push({ x0: -HALF-4, z0: -HALF-4, x1: HALF+4, z1: -HALF, h: bw });
@@ -416,6 +440,7 @@ const WLIST = ['pistol', 'smg', 'rifle', 'shotgun'];
 
 let player, zombies, particles, tracers, mode, wave, kills, running, paused;
 let leaves = [], birds = [], leafT = 0; // hojas cayendo + pájaros volando
+let cars = [], clouds = []; // coches aparcados + nubes a la deriva
 let saveT = 3; // autoguardado cada 3 s
 let spawnLeft, aliveCap = 24, spawnTimer, betweenT, msgT, bannerT, curInteract;
 let lastFire = -9, lastHitT = -9, camYaw, camPitch, camDist, mouseDown, timeNow = 0;
@@ -436,6 +461,17 @@ function reset(){
     spd: 0.25 + Math.random() * 0.35, yaw: Math.random() * 6.28, ph: Math.random() * 6.28,
   });
   mode = 'city'; wave = 0; kills = 0; paused = false;
+  clouds = [];
+  for (let i = 0; i < 10; i++){
+    const parts = [];
+    const n2 = 3 + Math.floor(Math.random() * 3);
+    for (let p = 0; p < n2; p++) parts.push({
+      ox: (Math.random() - 0.5) * 12, oz: (Math.random() - 0.5) * 9,
+      sx: 7 + Math.random() * 9, sy: 1.6 + Math.random() * 1.2, sz: 5 + Math.random() * 7,
+    });
+    clouds.push({ x: (Math.random() - 0.5) * 320, z: (Math.random() - 0.5) * 320,
+      y: 33 + Math.random() * 16, spd: 0.8 + Math.random() * 1.2, parts });
+  }
   spawnLeft = 0; spawnTimer = 0; betweenT = 0; curInteract = null;
   camYaw = Math.PI; camPitch = -0.32; camDist = 6;
   fpMode = true; fov = 1.05;
@@ -509,7 +545,7 @@ window.addEventListener('keydown', (e) => {
     if (WLIST[n] && player.weapons[WLIST[n]]) { player.cur = WLIST[n]; updHUD(); }
     else if (WLIST[n]) showMsg('¡No tienes esta arma! Cómprala en la armería.');
   }
-  if (e.code === 'KeyE') doInteract();
+  if (e.code === 'KeyE'){ if (player.inCar) exitCar(); else doInteract(); }
   if (e.code === 'KeyM'){ muted = !muted; showMsg(muted ? 'Sonido: APAGADO' : 'Sonido: ENCENDIDO'); }
   if (e.code === 'KeyV'){
     fpMode = !fpMode;
@@ -583,7 +619,7 @@ function rayBuildings(ox, oz, dx, dz, maxT){
   return best;
 }
 function tryFire(held){
-  if (mode !== 'city') return;
+  if (mode !== 'city' || player.inCar) return;
   const w = WEAPONS[player.cur];
   if (timeNow - lastFire < w.cd) return;
   if (w.ammo !== Infinity && player.ammo[player.cur] <= 0){ if(!held) sfx.deny(); showMsg('¡Sin munición!'); return; }
@@ -658,6 +694,8 @@ function spawnZombie(){
   if (wave >= 3 && r < Math.min(0.2, 0.06 + wave * 0.02)) type = 'brute';
   else if (wave >= 2 && r < 0.35) type = 'runner';
   const t = ZTYPES[type];
+  // cada oleada los zombis son más rápidos y con más vida (+7% velocidad, +8 PS por oleada, con tope)
+  const spdMul = 1 + Math.min(0.8, (wave - 1) * 0.07);
   for (let tries = 0; tries < 14; tries++){
     const si = Math.floor(Math.random() * (NB + 1));
     const line = -HALF + ST/2 + si * CELL;
@@ -670,7 +708,7 @@ function spawnZombie(){
     for (const b of obstacles){ if (x > b.x0-1 && x < b.x1+1 && z > b.z0-1 && z < b.z1+1){ bad = true; break; } }
     if (bad) continue;
     zombies.push({
-      x, z, yaw: Math.random() * 6.28, type, hp: t.hp, sc: t.sc, spd: t.spd,
+      x, z, yaw: Math.random() * 6.28, type, hp: t.hp + (wave - 1) * 8, sc: t.sc, spd: t.spd * spdMul,
       state: 'walk', anim: Math.random() * 6, atkCd: 0, hitT: 0, deathT: 0,
       avoidT: 0, avoidDir: 1,
       skin: t.skin, shirt: [0.3 + Math.random()*0.3, 0.2 + Math.random()*0.2, 0.25 + Math.random()*0.2],
@@ -690,6 +728,76 @@ function collideObstacles(ent, rad){
       else ent.z = b.z1 + rad;
     }
   }
+}
+
+/* ============ Coches ============ */
+function carObsOn(car){
+  carObsOff(car);
+  const diag = Math.abs(Math.sin(car.yaw)) > 0.4 && Math.abs(Math.cos(car.yaw)) > 0.4;
+  const hx = diag ? 1.9 : (Math.abs(Math.cos(car.yaw)) > 0.4 ? 1.1 : 2.4);
+  const hz = diag ? 1.9 : (Math.abs(Math.cos(car.yaw)) > 0.4 ? 2.4 : 1.1);
+  car.obs = { x0: car.x - hx, z0: car.z - hz, x1: car.x + hx, z1: car.z + hz, h: 1.4 };
+  obstacles.push(car.obs);
+}
+function carObsOff(car){
+  if (car.obs){
+    const i = obstacles.indexOf(car.obs);
+    if (i >= 0) obstacles.splice(i, 1);
+  }
+}
+function enterCar(c){
+  player.inCar = c;
+  c.driving = true;
+  carObsOff(c);
+  sfx.door();
+  showMsg('COCHE — W/S: gas/freno · ratón: girar · E: salir');
+}
+function exitCar(){
+  const c = player.inCar;
+  if (!c) return;
+  player.inCar = null;
+  c.driving = false;
+  c.yaw = camYaw;
+  const rx = Math.cos(c.yaw), rz = -Math.sin(c.yaw);
+  player.x = c.x + rx * 2.2;
+  player.z = c.z + rz * 2.2;
+  c.vx = 0; c.vz = 0;
+  carObsOn(c);
+  sfx.door();
+}
+function driveCar(c, dt){
+  const fx = -Math.sin(camYaw), fz = -Math.cos(camYaw);
+  const acc = (keys.KeyW || keys.ArrowUp) ? 15 : (keys.KeyS || keys.ArrowDown) ? -9 : 0;
+  c.vx += fx * acc * dt;
+  c.vz += fz * acc * dt;
+  const fr = Math.pow(0.45, dt); // fricción de rueda
+  c.vx *= fr; c.vz *= fr;
+  const sp = Math.hypot(c.vx, c.vz);
+  const maxSp = 26;
+  if (sp > maxSp){ c.vx *= maxSp / sp; c.vz *= maxSp / sp; }
+  const px = c.x, pz = c.z;
+  c.x += c.vx * dt;
+  c.z += c.vz * dt;
+  collideObstacles(c, 1.4);
+  const want = sp * dt, moved = Math.hypot(c.x - px, c.z - pz);
+  if (want > 0.02 && moved < want * 0.5){
+    c.vx *= 0.35; c.vz *= 0.35;
+    if (sp > 6) sfx.hurt(); // golpe contra el muro
+  }
+  c.x = Math.max(-HALF + 1.2, Math.min(HALF - 1.2, c.x));
+  c.z = Math.max(-HALF + 1.2, Math.min(HALF - 1.2, c.z));
+  c.yaw = camYaw;
+  // arrollar zombis (estilo GTA)
+  const sp2 = Math.hypot(c.vx, c.vz);
+  if (sp2 > 4){
+    const n = [c.vx / sp2, c.vz / sp2];
+    for (const z of zombies){
+      if (z.state === 'dying') continue;
+      if (Math.hypot(z.x - c.x, z.z - c.z) < 2.3) damageZombie(z, 80 + sp2 * 5, n);
+    }
+  }
+  player.x = c.x; player.z = c.z;
+  player.y = 0; player.vy = 0;
 }
 function updateZombies(dt){
   for (const z of zombies){
@@ -713,7 +821,7 @@ function updateZombies(dt){
       z.z += -Math.cos(a) * spd * dt * 1.3;
     }
     z.anim += dt * (2 + spd);
-    if (dist < 1.4 + 0.5 * z.sc && z.atkCd <= 0){
+    if (dist < 1.4 + 0.5 * z.sc && z.atkCd <= 0 && !player.inCar){
       z.atkCd = 1.0;
       damagePlayer(ZTYPES[z.type].dmg);
     }
@@ -755,6 +863,12 @@ function getInteractables(){
         type: 'enter', kind: s.kind,
       });
     }
+    if (!player.inCar){
+      for (const c of cars){
+        if (c.driving) continue;
+        list.push({ x: c.x, z: c.z, r: 3.4, label: 'Entrar al COCHE [E]', type: 'car', car: c });
+      }
+    }
     return list;
   }
   return interiorItemsCache;
@@ -763,6 +877,7 @@ let interiorItemsCache = [];
 function doInteract(){
   if (!curInteract) return;
   const it = curInteract;
+  if (it.type === 'car'){ enterCar(it.car); return; }
   if (it.type === 'enter'){
     mode = it.kind === 'gun' ? 'gunshop' : 'medshop';
     const ii = shopInterior(it.kind);
@@ -819,6 +934,11 @@ let interiorObs = [], interiorKind = 'gun';
 /* ============ Update ============ */
 function update(dt){
   timeNow += dt;
+  if (player.inCar){
+    // conducción: el coche acelera en la dirección de la cámara
+    driveCar(player.inCar, dt);
+    player.muzzleT -= dt;
+  } else {
   // player movement (camera-relative)
   const fx = -Math.sin(camYaw), fz = -Math.cos(camYaw);
   const rxx = Math.cos(camYaw), rzz = -Math.sin(camYaw); // right = (-f.z, 0, f.x)
@@ -847,6 +967,7 @@ function update(dt){
   player.y += player.vy * dt;
   if (player.y <= 0){ player.y = 0; player.vy = 0; }
   if (keys.Space && player.y === 0){ player.vy = 7.2; player.y = 0.001; sfx.jump(); }
+  }
 
   if (mode === 'city'){
     collideObstacles(player, 0.45);
@@ -887,6 +1008,11 @@ function update(dt){
   if (mode === 'city'){
     // pájaros girando sobre la ciudad
     for (const b of birds) b.yaw += b.spd * dt;
+    // nubes a la deriva (envuelven la ciudad)
+    for (const cl of clouds){
+      cl.x += cl.spd * dt;
+      if (cl.x > HALF + 60) cl.x = -HALF - 60;
+    }
     // hojas cayendo de los árboles
     leafT -= dt;
     if (leafT <= 0 && trees.length){
@@ -1008,6 +1134,11 @@ function drawMinimap(){
   for (const sh of shops){
     mmx.fillStyle = sh.kind === 'gun' ? '#ff8822' : '#33dd55';
     mmx.fillRect((sh.x + HALF) * s - 4, (sh.z + HALF) * s - 4, 8, 8);
+  }
+  // coches (celestes; el conducido, en blanco)
+  for (const c of cars){
+    mmx.fillStyle = c.driving ? '#ffffff' : '#9ecbff';
+    mmx.fillRect((c.x + HALF) * s - 2, (c.z + HALF) * s - 2, 4, 4);
   }
   mmx.fillStyle = '#ff4444';
   for (const z of zombies){
@@ -1156,6 +1287,26 @@ function render(){
       for (const s of [-1, 1])
         drawM(mul(T(px, py, pz), mul(Ry(heading), mul(Rz(flap * s), mul(T(s * 0.42, 0, 0), S(0.8, 0.05, 0.3))))), nmat(heading, 0), [0.16, 0.16, 0.2], false);
     }
+    // coches
+    for (const c of cars){
+      const yaw = c.driving ? camYaw : c.yaw;
+      const fx2 = -Math.sin(yaw), fz2 = -Math.cos(yaw);
+      const rx2 = Math.cos(yaw), rz2 = -Math.sin(yaw);
+      box(c.x, 0.55, c.z, 2.0, 0.7, 4.5, yaw, c.col);
+      // cabina (cristal) — se oculta al conducir en 1ª persona
+      if (!(c.driving && fpMode))
+        box(c.x - fx2 * 0.7, 1.15, c.z - fz2 * 0.7, 1.8, 0.55, 2.2, yaw, [0.25, 0.30, 0.38]);
+      // ruedas
+      for (const s of [[1,1],[1,-1],[-1,1],[-1,-1]])
+        box(c.x + rx2 * s[0] * 0.95 + fx2 * s[1] * 1.6, 0.32,
+            c.z + rz2 * s[0] * 0.95 + fz2 * s[1] * 1.6, 0.36, 0.6, 0.75, yaw, [0.12, 0.12, 0.14]);
+      // faros delanteros (encendidos)
+      for (const s of [-1, 1])
+        box(c.x + rx2 * s * 0.6 + fx2 * 2.28, 0.62, c.z + rz2 * s * 0.6 + fz2 * 2.28, 0.3, 0.18, 0.12, yaw, [0.95, 0.9, 0.7], true);
+    }
+    // nubes
+    for (const cl of clouds)
+      for (const p of cl.parts) box(cl.x + p.ox, cl.y, cl.z + p.oz, p.sx, p.sy, p.sz, 0, [0.93, 0.95, 0.98]);
     // hojas cayendo
     for (const l of leaves) box(l.x, l.y, l.z, 0.2, 0.04, 0.26, l.rot, l.col);
     // shops: sign + door + awning

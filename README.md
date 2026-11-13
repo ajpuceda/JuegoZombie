@@ -22,8 +22,9 @@ Juego estilo GTA con zombis, hecho **100% en WebGL puro** — un solo archivo HT
 | `Rueda del ratón` | Zoom (FOV en 1ª persona) |
 | `Clic izq.` | **Disparar** (mantén para automáticas) |
 | `Espacio` | **Saltar** (mantén = saltos encadenados) |
+| `E` | Entrar a tiendas / comprar / **entrar-salir del coche** |
+| `W / S` (en coche) | **Acelerar / frenar** — el ratón gira el volante |
 | `1 - 4` | Armas: Pistola (∞) · SMG · Fusil · Escopeta |
-| `E` | Entrar a tiendas / comprar |
 | `ESC` | Pausa (clic para volver) |
 | `P` | Pausa / reanudar |
 | `M` | Sonido on/off |
@@ -31,20 +32,21 @@ Juego estilo GTA con zombis, hecho **100% en WebGL puro** — un solo archivo HT
 
 ## 🧟 Características
 
+- **🚗 Coches robables** — 18 coches aparcados por la ciudad: pulsa `E` para entrar, `W/S` para conducir y **atropella zombis** para ganar dinero (¡estilo GTA!). Los zombis no te hacen daño dentro del coche
 - **Partida guardada automáticamente** — la oleada, el dinero, las armas y la posición se conservan al recargar la página (botón *CONTINUAR*); morir borra la partida
+- **Zombis cada vez más rápidos** — cada oleada +7% de velocidad y +8 de vida (hasta +80%), ¡no te confíes!
 - **Cámara en primera persona** con arma visible y balanceo al andar (V = cambiar a 3ª persona)
 - **Salto con Espacio** — física de gravedad, saltos encadenados estilo Minecraft
-- **Gráficos detallados**: edificios con ventanas (¡algunas encendidas!) y puertas, árboles con ramas y copas volumétricas, pájaros que vuelan y hojas que caen
-- **Gráficos suaves**: antialiasing, resolución alta y luz continua
+- **Gráficos detallados**: edificios con ventanas (¡algunas encendidas!) y puertas, árboles con ramas y copas volumétricas, pájaros que vuelan, hojas que caen y **nubes a la deriva**
 - Ciudad 3D grande: calles, edificios, parques y dos tiendas a las que puedes entrar
-- Zombis de 3 tipos (caminante, corredor y bruto) en oleadas infinitas, cada vez más difíciles
+- Zombis de 3 tipos (caminante, corredor y bruto) en oleadas infinitas
 - 4 armas que se compran con el dinero de los zombis eliminados
 - Armería (armas y munición) y farmacia (botiquines y chaleco antibalas)
-- Minimapa, HUD retro, efectos de partículas y sonido chiptune
+- Minimapa (¡con los coches marcados!), HUD retro, efectos de partículas y sonido chiptune
 
 ## 🛠️ Tecnología
 
-WebGL crudo con sombreadores propios, matemática de matrices escrita a mano y motor de juego completo (IA de zombis con evasión de obstáculos, raycast de balas, colisiones AABB, cámara con pointer lock estilo Minecraft, física de salto, guardado en localStorage) en ~1100 líneas de JavaScript sin ningún framework.
+WebGL crudo con sombreadores propios, matemática de matrices escrita a mano y motor de juego completo (IA de zombis con evasión de obstáculos, raycast de balas, colisiones AABB, física de conducción, cámara con pointer lock estilo Minecraft, física de salto, guardado en localStorage) en ~1300 líneas de JavaScript sin ningún framework.
 
 ---
 
