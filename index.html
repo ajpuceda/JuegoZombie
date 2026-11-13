@@ -58,7 +58,7 @@
 <div class="hud" id="msg"></div>
 <div class="hud" id="banner"></div>
 <div class="hud" id="cross">+</div>
-<div class="hud" id="hint">Ratón: arrastra = girar cámara &nbsp;|&nbsp; Clic izq. = disparar &nbsp;|&nbsp; E = interactuar &nbsp;|&nbsp; H = ocultar ayuda</div>
+<div class="hud" id="hint">Ratón: mueve = cámara (estilo Minecraft) &nbsp;|&nbsp; Clic izq. = disparar &nbsp;|&nbsp; E = interactuar &nbsp;|&nbsp; ESC = pausa &nbsp;|&nbsp; H = ocultar ayuda</div>
 <div id="vig"></div>
 <div id="pauza">PAUSA</div>
 
@@ -67,7 +67,7 @@
   <h2>Sobrevive oleada tras oleada. Gana dinero. Compra armas.</h2>
   <div class="ctr">
     <div><b>W A S D</b> moverse &nbsp; <b>Shift</b> correr</div>
-    <div><b>Ratón (arrastra)</b> girar cámara &nbsp; <b>Rueda</b> zoom</div>
+    <div><b>Ratón (solo mover)</b> girar cámara &nbsp; <b>Rueda</b> zoom</div>
     <div><b>Clic izq. / Espacio</b> disparar</div>
     <div><b>1 - 4</b> elegir arma</div>
     <div><b>E</b> entrar a tienda / comprar</div>
@@ -350,7 +350,7 @@ const WLIST = ['pistol', 'smg', 'rifle', 'shotgun'];
 
 let player, zombies, particles, tracers, mode, wave, kills, running, paused;
 let spawnLeft, aliveCap = 24, spawnTimer, betweenT, msgT, bannerT, curInteract;
-let lastFire = -9, lastHitT = -9, camYaw, camPitch, camDist, mouseDown, dragged, lastDragT, timeNow = 0;
+let lastFire = -9, lastHitT = -9, camYaw, camPitch, camDist, mouseDown, timeNow = 0;
 
 function reset(){
   player = {
@@ -362,7 +362,7 @@ function reset(){
   mode = 'city'; wave = 0; kills = 0; paused = false;
   spawnLeft = 0; spawnTimer = 0; betweenT = 0; curInteract = null;
   camYaw = Math.PI; camPitch = -0.32; camDist = 6;
-  mouseDown = false; dragged = false; lastDragT = -9;
+  mouseDown = false;
   genCity();
   startWave();
   updHUD(true);
@@ -395,20 +395,34 @@ window.addEventListener('keydown', (e) => {
 });
 window.addEventListener('keyup', (e) => { keys[e.code] = false; });
 
-let mx = 0, my = 0;
-canvas.addEventListener('mousedown', (e) => { mouseDown = true; dragged = false; mx = e.clientX; my = e.clientY; e.preventDefault(); });
-window.addEventListener('mousemove', (e) => {
-  if (!mouseDown) return;
-  const dx = e.clientX - mx, dy = e.clientY - my;
-  if (Math.abs(dx) + Math.abs(dy) > 7) dragged = true;
-  camYaw -= dx * 0.006;
-  camPitch = Math.max(-0.9, Math.min(0.45, camPitch + dy * 0.004));
-  lastDragT = timeNow;
-  mx = e.clientX; my = e.clientY;
+// kamera jak w Minecraft: sam ruch myszki obraca kamerę, bez trzymania przycisków
+canvas.addEventListener('mousedown', (e) => {
+  e.preventDefault();
+  if (canvas.requestPointerLock && document.pointerLockElement !== canvas){
+    try { canvas.requestPointerLock(); } catch (err) {}
+  }
+  if (running && !paused){
+    mouseDown = true;
+    tryFire(false);
+  } else if (running && paused){
+    paused = false;
+    document.getElementById('pauza').style.display = 'none';
+  }
 });
-window.addEventListener('mouseup', () => {
-  if (mouseDown && !dragged && running && !paused) tryFire(false);
-  mouseDown = false;
+window.addEventListener('mousemove', (e) => {
+  if (!running || paused) return;
+  const mdx = Math.max(-200, Math.min(200, e.movementX || 0));
+  const mdy = Math.max(-200, Math.min(200, e.movementY || 0));
+  camYaw -= mdx * 0.006;
+  camPitch = Math.max(-0.9, Math.min(0.45, camPitch - mdy * 0.004));
+});
+window.addEventListener('mouseup', () => { mouseDown = false; });
+document.addEventListener('pointerlockchange', () => {
+  // ESC zwalnia kursor — automatyczna pauza, klik = powrót do gry
+  if (!document.pointerLockElement && running && !paused){
+    paused = true;
+    document.getElementById('pauza').style.display = 'block';
+  }
 });
 window.addEventListener('contextmenu', (e) => e.preventDefault());
 window.addEventListener('wheel', (e) => { camDist = Math.max(3.5, Math.min(10, camDist + e.deltaY * 0.004)); });
@@ -723,7 +737,7 @@ function update(dt){
   if (timeNow - lastHitT > 5 && player.hp < 100) player.hp = Math.min(100, player.hp + 3 * dt);
 
   // fire held (auto)
-  if ((mouseDown && !dragged) || keys.Space){
+  if (mouseDown || keys.Space){
     const w = WEAPONS[player.cur];
     if (w.auto || keys.Space) tryFire(true);
   }
@@ -762,13 +776,6 @@ function update(dt){
   particles = particles.filter(p => p.life > 0);
   for (const t of tracers) t.life -= dt;
   tracers = tracers.filter(t => t.life > 0);
-
-  // camera auto-align
-  if (!mouseDown && timeNow - lastDragT > 1.4 && mag > 0.01){
-    let dy = Math.atan2(-mxv, -mzv) - camYaw;
-    while (dy > Math.PI) dy -= 6.2832; while (dy < -Math.PI) dy += 6.2832;
-    camYaw += dy * Math.min(1, dt * 0.8);
-  }
 
   // interact prompt
   curInteract = null;
