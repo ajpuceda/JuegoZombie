@@ -8,7 +8,7 @@
   :root { font-family: "Courier New", monospace; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { width: 100%; height: 100%; overflow: hidden; background: #10131a; }
-  #gl { width: 100vw; height: 100vh; display: block; image-rendering: pixelated; image-rendering: crisp-edges; cursor: crosshair; }
+  #gl { width: 100vw; height: 100vh; display: block; cursor: crosshair; }
   .hud { position: fixed; color: #fff; text-shadow: 2px 2px 0 #000; user-select: none; pointer-events: none; z-index: 5; }
   #topwave { top: 12px; left: 50%; transform: translateX(-50%); font-size: 18px; font-weight: bold; letter-spacing: 2px; }
   #bottomleft { bottom: 14px; left: 14px; font-size: 14px; }
@@ -58,7 +58,7 @@
 <div class="hud" id="msg"></div>
 <div class="hud" id="banner"></div>
 <div class="hud" id="cross">+</div>
-<div class="hud" id="hint">Ratón: mueve = cámara (estilo Minecraft) &nbsp;|&nbsp; Clic izq. = disparar &nbsp;|&nbsp; V = cámara 1ª/3ª persona &nbsp;|&nbsp; E = interactuar &nbsp;|&nbsp; ESC = pausa &nbsp;|&nbsp; H = ocultar ayuda</div>
+<div class="hud" id="hint">Ratón: mueve = cámara (estilo Minecraft) &nbsp;|&nbsp; Clic izq. = disparar &nbsp;|&nbsp; Espacio = saltar &nbsp;|&nbsp; V = cámara 1ª/3ª persona &nbsp;|&nbsp; E = interactuar &nbsp;|&nbsp; ESC = pausa &nbsp;|&nbsp; H = ocultar ayuda</div>
 <div id="vig"></div>
 <div id="pauza">PAUSA</div>
 
@@ -68,7 +68,7 @@
   <div class="ctr">
     <div><b>W A S D</b> moverse &nbsp; <b>Shift</b> correr</div>
     <div><b>Ratón (solo mover)</b> girar cámara &nbsp; <b>Rueda</b> zoom &nbsp; <b>V</b> cámara 1ª/3ª persona</div>
-    <div><b>Clic izq. / Espacio</b> disparar</div>
+    <div><b>Clic izq.</b> disparar &nbsp; <b>Espacio</b> saltar</div>
     <div><b>1 - 4</b> elegir arma</div>
     <div><b>E</b> entrar a tienda / comprar</div>
     <div><b>P</b> pausa &nbsp; <b>M</b> sonido &nbsp; <b>H</b> ayuda</div>
@@ -86,7 +86,7 @@
 "use strict";
 /* ============ WebGL setup ============ */
 const canvas = document.getElementById('gl');
-const gl = canvas.getContext('webgl', { antialias: false });
+const gl = canvas.getContext('webgl', { antialias: true });
 if (!gl) { document.getElementById('start').innerHTML = '<h1>Tu navegador no soporta WebGL</h1>'; }
 
 const VS = `
@@ -107,8 +107,11 @@ varying vec3 vNor; varying vec3 vCol; varying float vDist;
 uniform vec3 uLightDir; uniform float uEmiss;
 void main(){
   float d = max(dot(normalize(vNor), normalize(uLightDir)), 0.0);
-  d = floor(d * 3.0 + 0.5) / 3.0;
-  vec3 col = uEmiss > 0.5 ? vCol : vCol * (0.46 + 0.58 * d);
+  // luz suave (antes: bandas planas de 3 niveles) + ambiente hemisférico cálido/frío
+  vec3 n = normalize(vNor);
+  vec3 amb = mix(vec3(0.36, 0.39, 0.48), vec3(0.52, 0.53, 0.58), n.y * 0.5 + 0.5);
+  vec3 col = uEmiss > 0.5 ? vCol : vCol * (amb + vec3(1.0, 0.95, 0.84) * d * 0.70);
+  col = min(col, vec3(1.0));
   float fog = clamp((vDist - 70.0) / 110.0, 0.0, 1.0);
   col = mix(col, vec3(0.62, 0.70, 0.82), fog);
   gl_FragColor = vec4(col, 1.0);
@@ -245,6 +248,7 @@ const sfx = {
   deny:   () => tone(120, 80, 0.15, 'square', 0.12),
   wave:   () => { tone(440,440,0.1,'square',0.1); setTimeout(()=>tone(587,587,0.1,'square',0.1),120); setTimeout(()=>tone(880,880,0.16,'square',0.1),240); },
   door:   () => tone(300, 500, 0.12, 'triangle', 0.14),
+  jump:   () => tone(180, 320, 0.12, 'square', 0.05),
 };
 
 /* ============ World generation ============ */
@@ -355,7 +359,7 @@ let fpMode = true, fov = 1.05; // primera persona por defecto — tecla V altern
 
 function reset(){
   player = {
-    x: 0, z: 24, yaw: 0, yawVis: Math.PI, hp: 100, armor: 0, money: 150,
+    x: 0, z: 24, y: 0, vy: 0, yaw: 0, yawVis: Math.PI, hp: 100, armor: 0, money: 150,
     weapons: { pistol: true }, cur: 'pistol', ammo: { smg: 0, rifle: 0, shotgun: 0 },
     anim: 0, walkAmt: 0, muzzleT: 0, lastFire: -9,
   };
@@ -403,7 +407,7 @@ window.addEventListener('keydown', (e) => {
     showMsg(fpMode ? 'Cámara: PRIMERA PERSONA' : 'Cámara: TERCERA PERSONA');
   }
   if (e.code === 'KeyH'){ const h = document.getElementById('hint'); h.style.display = (h.style.display === 'none') ? 'block' : 'none'; }
-  if (e.code === 'Space') tryFire(false);
+  // Espacio ya no dispara — ahora es saltar (se maneja en update, mantener = saltos seguidos estilo Minecraft)
 });
 window.addEventListener('keyup', (e) => { keys[e.code] = false; });
 
@@ -495,7 +499,7 @@ function tryFire(held){
       if (px * px + pz * pz < r * r){ hit = z; hitT = Math.max(tc, 0.01); }
     }
     const ex = ox + d[0] * hitT, ez = oz + d[2] * hitT;
-    tracers.push({ x0: ox, y0: 1.5, z0: oz, x1: ex, y1: 1.5, z1: ez, life: 0.07 });
+    tracers.push({ x0: ox, y0: 1.5 + player.y, z0: oz, x1: ex, y1: 1.5 + player.y, z1: ez, life: 0.07 });
     if (hit) damageZombie(hit, w.dmg, d);
   }
   updHUD();
@@ -727,6 +731,12 @@ function update(dt){
   if (timeNow - player.lastFire < 0.4) player.yawVis = camYaw;
   player.muzzleT -= dt;
 
+  // salto (Espacio)
+  player.vy -= 22 * dt;
+  player.y += player.vy * dt;
+  if (player.y <= 0){ player.y = 0; player.vy = 0; }
+  if (keys.Space && player.y === 0){ player.vy = 7.2; player.y = 0.001; sfx.jump(); }
+
   if (mode === 'city'){
     collideObstacles(player, 0.45);
     player.x = Math.max(-HALF + 0.5, Math.min(HALF - 0.5, player.x));
@@ -876,7 +886,7 @@ function drawMinimap(){
 
 /* ============ Render ============ */
 function resize(){
-  const sc = 0.55;
+  const sc = 0.75; // antes 0.55 — más resolución, imagen mucho más suave
   canvas.width = Math.floor(window.innerWidth * sc);
   canvas.height = Math.floor(window.innerHeight * sc);
   gl.viewport(0, 0, canvas.width, canvas.height);
@@ -888,7 +898,7 @@ function drawHumanoid(x, z, yaw, o){
   const s = o.sc;
   const sink = o.dying ? Math.max(0, o.deathT - 0.5) * 0.8 : 0;
   const fall = o.dying ? Math.min(1.5, o.deathT * 5) : 0;
-  const B = mul(T(x, -sink, z), mul(Ry(yaw), fall ? Rx(-fall) : I4));
+  const B = mul(T(x, (o.y || 0) - sink, z), mul(Ry(yaw), fall ? Rx(-fall) : I4));
   const rot = fall ? -fall : 0;
   const ph = o.anim;
   const skin = o.hitT > 0 ? [0.9, 0.25, 0.2] : o.skin;
@@ -930,8 +940,8 @@ function render(){
   const f = [-Math.sin(camYaw) * cp, sp2, -Math.cos(camYaw) * cp];
   // primera persona: cámara en la cabeza del jugador; tercera: detrás con camDist
   const eye = fpMode
-    ? [player.x, 1.62, player.z]
-    : [player.x - f[0] * camDist, Math.max(0.7, 1.7 - f[1] * camDist), player.z - f[2] * camDist];
+    ? [player.x, 1.62 + player.y, player.z]
+    : [player.x - f[0] * camDist, Math.max(0.7, 1.7 + player.y - f[1] * camDist), player.z - f[2] * camDist];
   // right = normalize(cross(f, up))
   const r = [-f[2], 0, f[0]];
   const rl = Math.hypot(r[0], r[2]) || 1; r[0] /= rl; r[2] /= rl;
@@ -1057,7 +1067,7 @@ function render(){
   // player
   if (!fpMode){
     drawHumanoid(player.x, player.z, player.yawVis || 0, {
-      sc: 1, anim: player.anim, walkAmt: player.walkAmt, zombie: false,
+      sc: 1, anim: player.anim, walkAmt: player.walkAmt, zombie: false, y: player.y,
       skin: [0.85, 0.66, 0.5], shirt: [0.55, 0.15, 0.15], jacket: [0.42, 0.12, 0.12],
       pants: [0.2, 0.25, 0.45], cap: [0.18, 0.18, 0.22], gun: true, cur: player.cur,
       muzzleT: player.muzzleT, lastFire: player.lastFire,
@@ -1122,7 +1132,7 @@ document.getElementById('restartbtn').addEventListener('click', () => {
   reset();
 });
 running = false;
-player = { x: 0, z: 24, yawVis: Math.PI, hp: 100, armor: 0, money: 150, weapons: { pistol: true }, cur: 'pistol', ammo: { smg: 0, rifle: 0, shotgun: 0 }, anim: 0, walkAmt: 0, muzzleT: 0, lastFire: -9 };
+player = { x: 0, z: 24, y: 0, vy: 0, yawVis: Math.PI, hp: 100, armor: 0, money: 150, weapons: { pistol: true }, cur: 'pistol', ammo: { smg: 0, rifle: 0, shotgun: 0 }, anim: 0, walkAmt: 0, muzzleT: 0, lastFire: -9 };
 camYaw = Math.PI; camPitch = -0.32; camDist = 6;
 genCity();
 </script>
