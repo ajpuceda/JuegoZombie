@@ -20,7 +20,7 @@ Juego estilo GTA con zombis, hecho **100% en WebGL puro** — un solo archivo HT
 | `V` | **Cámara 1ª / 3ª persona** (por defecto: 1ª persona) |
 | `Shift` | Correr |
 | `Rueda del ratón` | Zoom (FOV en 1ª persona) |
-| `Clic izq.` | Disparar (mantén para automáticas) |
+| `Clic izq.` | **Disparar** (mantén para automáticas) |
 | `Espacio` | **Saltar** (mantén = saltos encadenados) |
 | `1 - 4` | Armas: Pistola (∞) · SMG · Fusil · Escopeta |
 | `E` | Entrar a tiendas / comprar |
@@ -31,9 +31,11 @@ Juego estilo GTA con zombis, hecho **100% en WebGL puro** — un solo archivo HT
 
 ## 🧟 Características
 
+- **Partida guardada automáticamente** — la oleada, el dinero, las armas y la posición se conservan al recargar la página (botón *CONTINUAR*); morir borra la partida
 - **Cámara en primera persona** con arma visible y balanceo al andar (V = cambiar a 3ª persona)
 - **Salto con Espacio** — física de gravedad, saltos encadenados estilo Minecraft
-- **Gráficos suaves**: antialiasing, resolución más alta y luz continua (sin bandas planas)
+- **Gráficos detallados**: edificios con ventanas (¡algunas encendidas!) y puertas, árboles con ramas y copas volumétricas, pájaros que vuelan y hojas que caen
+- **Gráficos suaves**: antialiasing, resolución alta y luz continua
 - Ciudad 3D grande: calles, edificios, parques y dos tiendas a las que puedes entrar
 - Zombis de 3 tipos (caminante, corredor y bruto) en oleadas infinitas, cada vez más difíciles
 - 4 armas que se compran con el dinero de los zombis eliminados
@@ -42,7 +44,7 @@ Juego estilo GTA con zombis, hecho **100% en WebGL puro** — un solo archivo HT
 
 ## 🛠️ Tecnología
 
-WebGL crudo con sombreadores propios, matemática de matrices escrita a mano y motor de juego completo (IA de zombis con evasión de obstáculos, raycast de balas, colisiones AABB, cámara con pointer lock estilo Minecraft, física de salto) en ~1000 líneas de JavaScript sin ningún framework.
+WebGL crudo con sombreadores propios, matemática de matrices escrita a mano y motor de juego completo (IA de zombis con evasión de obstáculos, raycast de balas, colisiones AABB, cámara con pointer lock estilo Minecraft, física de salto, guardado en localStorage) en ~1100 líneas de JavaScript sin ningún framework.
 
 ---
 
