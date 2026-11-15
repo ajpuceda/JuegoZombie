@@ -239,10 +239,10 @@ function tone(f0, f1, dur, type, vol){
   o.start(); o.stop(AC.currentTime + dur);
 }
 const sfx = {
-  pistol: () => tone(320, 50, 0.09, 'square', 0.14),
-  smg:    () => tone(500, 90, 0.05, 'sawtooth', 0.09),
-  rifle:  () => tone(260, 60, 0.11, 'sawtooth', 0.14),
-  shotgun:() => { tone(150, 30, 0.2, 'sawtooth', 0.2); tone(90, 25, 0.25, 'square', 0.12); },
+  pistol: () => tone(280, 60, 0.10, 'triangle', 0.08),
+  smg:    () => tone(420, 110, 0.05, 'triangle', 0.055),
+  rifle:  () => tone(220, 70, 0.12, 'triangle', 0.085),
+  shotgun:() => { tone(130, 35, 0.22, 'triangle', 0.11); tone(80, 28, 0.26, 'sine', 0.07); },
   hit:    () => tone(140, 60, 0.06, 'square', 0.1),
   zdie:   () => tone(180, 25, 0.45, 'sawtooth', 0.14),
   hurt:   () => tone(70, 40, 0.25, 'square', 0.2),
@@ -1461,4 +1461,3 @@ function render(){
       const px = b.cx + Math.cos(b.yaw) * b.r, pz = b.cz + Math.sin(b.yaw) * b.r;
       const py = b.h + Math.sin(b.yaw * 3 + b.ph) * 1.5;
       const heading = b.yaw + Math.PI / 2;
-      const flap = Math.sin(timeNow * 9 + b.ph) * 0.55;
