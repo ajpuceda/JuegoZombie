@@ -1461,3 +1461,178 @@ function render(){
       const px = b.cx + Math.cos(b.yaw) * b.r, pz = b.cz + Math.sin(b.yaw) * b.r;
       const py = b.h + Math.sin(b.yaw * 3 + b.ph) * 1.5;
       const heading = b.yaw + Math.PI / 2;
+      const flap = Math.sin(timeNow * 9 + b.ph) * 0.55;
+      drawM(mul(T(px, py, pz), mul(Ry(heading), S(0.28, 0.1, 0.55))), nmat(heading, 0), [0.12, 0.12, 0.16], false);
+      for (const s of [-1, 1])
+        drawM(mul(T(px, py, pz), mul(Ry(heading), mul(Rz(flap * s), mul(T(s * 0.42, 0, 0), S(0.8, 0.05, 0.3))))), nmat(heading, 0), [0.16, 0.16, 0.2], false);
+    }
+    // coches
+    for (const c of cars){
+      const yaw = c.driving ? camYaw : c.yaw;
+      const fx2 = -Math.sin(yaw), fz2 = -Math.cos(yaw);
+      const rx2 = Math.cos(yaw), rz2 = -Math.sin(yaw);
+      box(c.x, 0.55, c.z, 2.0, 0.7, 4.5, yaw, c.col);
+      // cabina (cristal) — se oculta al conducir en 1ª persona
+      if (!(c.driving && fpMode))
+        box(c.x - fx2 * 0.7, 1.15, c.z - fz2 * 0.7, 1.8, 0.55, 2.2, yaw, [0.25, 0.30, 0.38]);
+      // ruedas
+      for (const s of [[1,1],[1,-1],[-1,1],[-1,-1]])
+        box(c.x + rx2 * s[0] * 0.95 + fx2 * s[1] * 1.6, 0.32,
+            c.z + rz2 * s[0] * 0.95 + fz2 * s[1] * 1.6, 0.36, 0.6, 0.75, yaw, [0.12, 0.12, 0.14]);
+      // faros delanteros (encendidos) — apagados si el coche está quemado
+      if (!c.dead) for (const s of [-1, 1])
+        box(c.x + rx2 * s * 0.6 + fx2 * 2.28, 0.62, c.z + rz2 * s * 0.6 + fz2 * 2.28, 0.3, 0.18, 0.12, yaw, [0.95, 0.9, 0.7], true);
+    }
+    // nubes
+    for (const cl of clouds)
+      for (const p of cl.parts) box(cl.x + p.ox, cl.y, cl.z + p.oz, p.sx, p.sy, p.sz, 0, [0.93, 0.95, 0.98]);
+    // hojas cayendo
+    for (const l of leaves) box(l.x, l.y, l.z, 0.2, 0.04, 0.26, l.rot, l.col);
+    // shops: sign + door + awning
+    for (const s of shops){
+      const isGun = s.kind === 'gun';
+      const scol = isGun ? [1, 0.55, 0.1] : [0.2, 0.85, 0.35];
+      box(s.doorX, 2.2, s.z + 7.9, 3.4, 4.4, 0.3, 0, [0.12, 0.09, 0.07]);              // door recess
+      box(s.doorX, 4.9, s.z + 8.0, 6.5, 1.2, 1.2, 0, isGun ? [0.85, 0.45, 0.15] : [0.9, 0.92, 0.95]); // awning
+      box(s.doorX, 8.2, s.z + 7.7, 10, 2.2, 0.6, 0, scol, true);                        // sign (emissive)
+      if (!isGun){ // red cross on sign
+        box(s.doorX, 8.2, s.z + 7.3, 0.9, 1.8, 0.3, 0, [1, 0.15, 0.15], true);
+        box(s.doorX, 8.2, s.z + 7.3, 1.8, 0.9, 0.3, 0, [1, 0.15, 0.15], true);
+      }
+    }
+    // boundary walls
+    box(0, 1.25, -HALF - 2, CITY + 8, 2.5, 1.4, 0, GRAY);
+    box(0, 1.25, HALF + 2, CITY + 8, 2.5, 1.4, 0, GRAY);
+    box(-HALF - 2, 1.25, 0, 1.4, 2.5, CITY + 8, 0, GRAY);
+    box(HALF + 2, 1.25, 0, 1.4, 2.5, CITY + 8, 0, GRAY);
+    // enemigos (humanos — estilo GTA)
+    for (const z of zombies){
+      drawHumanoid(z.x, z.z, z.yaw, {
+        sc: z.sc, anim: z.anim, walkAmt: 1, zombie: false, skin: z.skin,
+        shirt: z.shirt, pants: z.pants || [0.25, 0.25, 0.3], cap: z.cap, hitT: z.hitT,
+        dying: z.state === 'dying', deathT: z.deathT,
+      });
+    }
+    // peatones paseando por las aceras
+    for (const q of peds){
+      drawHumanoid(q.x, q.z, q.yaw, {
+        sc: 1, anim: q.anim, walkAmt: 1, zombie: false, skin: q.skin,
+        shirt: q.shirt, pants: q.pants, cap: q.cap, hitT: q.hitT,
+        dying: q.state === 'dying', deathT: q.deathT,
+      });
+    }
+  } else {
+    // ---- interior ----
+    const isGun = mode === 'gunshop';
+    const RX = isGun ? 12 : 11, RZ = isGun ? 8 : 7, WH = 4;
+    const wallC = isGun ? [0.35, 0.25, 0.18] : [0.88, 0.9, 0.92];
+    const floorC = isGun ? [0.3, 0.25, 0.2] : [0.75, 0.78, 0.8];
+    box(0, 0, 0, RX * 2, 0.08, RZ * 2, 0, floorC);
+    // walls with door gap on +Z
+    box(0, WH / 2, -RZ, RX * 2, WH, 0.5, 0, wallC);
+    box(-RX, WH / 2, 0, 0.5, WH, RZ * 2, 0, wallC);
+    box(RX, WH / 2, 0, 0.5, WH, RZ * 2, 0, wallC);
+    const gap = 2.2;
+    box(-(gap + (RX - gap) / 2), WH / 2, RZ, RX - gap, WH, 0.5, 0, wallC);
+    box((gap + (RX - gap) / 2), WH / 2, RZ, RX - gap, WH, 0.5, 0, wallC);
+    box(0, 0.06, RZ, 3.2, 0.12, 2.2, 0, [1, 0.85, 0.4], true); // exit mat
+    if (isGun){
+      // counter
+      box(0, 0.55, -0.6, 8, 1.1, 1.2, 0, [0.5, 0.35, 0.2]);
+      // pedestals + items
+      const px = [-7, -2.4, 2.4, 7];
+      const cols = [[0.25,0.25,0.28], [0.35,0.22,0.12], [0.45,0.25,0.15], [0.2,0.55,0.25]];
+      for (let i = 0; i < 4; i++){
+        box(px[i], 0.5, -3.2, 1.6, 1, 1.6, 0, [0.45, 0.45, 0.48]);
+        box(px[i], 1.25, -3.2, 0.5, 0.5, 1.1, 0, cols[i], true);
+      }
+      box(0, 3.2, -RZ + 0.4, 12, 1.6, 0.4, 0, [1, 0.55, 0.1], true);
+    } else {
+      // shelves
+      box(-9, 0.8, -1, 1.6, 1.6, 8, 0, [0.8, 0.82, 0.85]);
+      box(9, 0.8, -1, 1.6, 1.6, 8, 0, [0.8, 0.82, 0.85]);
+      box(-2.2, 0.5, -3.5, 1.2, 1, 1.2, 0, [1, 1, 1]);
+      box(2.2, 0.5, -3.5, 1.2, 1, 1.2, 0, [1, 1, 1]);
+      box(0, 0.5, -5.2, 1.2, 1, 1.2, 0, [0.3, 0.5, 0.9]);
+      // cross on wall
+      box(0, 3.2, -RZ + 0.4, 0.9, 2, 0.3, 0, [1, 0.15, 0.15], true);
+      box(0, 3.2, -RZ + 0.4, 2, 0.9, 0.3, 0, [1, 0.15, 0.15], true);
+    }
+  }
+
+  // player
+  if (!fpMode){
+    drawHumanoid(player.x, player.z, player.yawVis || 0, {
+      sc: 1, anim: player.anim, walkAmt: player.walkAmt, zombie: false, y: player.y,
+      skin: [0.85, 0.66, 0.5], shirt: [0.55, 0.15, 0.15], jacket: [0.42, 0.12, 0.12],
+      pants: [0.2, 0.25, 0.45], cap: [0.18, 0.18, 0.22], gun: true, cur: player.cur,
+      muzzleT: player.muzzleT, lastFire: player.lastFire,
+    });
+  } else {
+    // arma en primera persona (view-model) delante de la cámara, con balanceo al andar
+    const g = WEAPONS[player.cur].gun;
+    const fhx = -Math.sin(camYaw), fhz = -Math.cos(camYaw);
+    const rgx = Math.cos(camYaw), rgz = -Math.sin(camYaw);
+    const bob = Math.abs(Math.sin(player.anim * 0.5)) * 0.045 * player.walkAmt;
+    const k = 2.0;
+    const gx = eye[0] + fhx * 0.55 + rgx * 0.26;
+    const gz = eye[2] + fhz * 0.55 + rgz * 0.26;
+    const gy = eye[1] - 0.26 - bob;
+    box(gx, gy, gz, g[0] * k, g[1] * k, g[2] * k, camYaw, g[3]);
+    if (player.muzzleT > 0)
+      box(gx + fhx * (g[2] * k / 2 + 0.12), gy, gz + fhz * (g[2] * k / 2 + 0.12), 0.16, 0.16, 0.16, camYaw, [1, 0.9, 0.4], true);
+  }
+
+  // tracers
+  for (const t of tracers){
+    const dx = t.x1 - t.x0, dy = t.y1 - t.y0, dz = t.z1 - t.z0;
+    const len = Math.hypot(dx, dy, dz);
+    if (len < 0.01) continue;
+    const nx = dx / len, ny = dy / len, nz = dz / len;
+    const yaw = Math.atan2(-nx, -nz);
+    const rx = Math.asin(Math.max(-1, Math.min(1, ny)));
+    const M = mul(T(t.x0 + dx / 2, t.y0 + dy / 2, t.z0 + dz / 2),
+                  mul(Ry(yaw), mul(Rx(rx), S(0.05, 0.05, len))));
+    drawM(M, nmat(yaw, rx), [1, 0.95, 0.6], true);
+  }
+  // particles
+  for (const p of particles) box(p.x, p.y, p.z, p.s, p.s, p.s, 0, p.col);
+
+  drawMinimap();
+  updHUD();
+}
+
+/* ============ Main loop ============ */
+let lastT = performance.now();
+function frame(){
+  requestAnimationFrame(frame);
+  const now = performance.now();
+  let dt = Math.min(0.05, (now - lastT) / 1000);
+  lastT = now;
+  if (running && !paused) update(dt);
+  if (running) render();
+}
+frame();
+
+/* ============ Start / restart ============ */
+document.getElementById('playbtn').addEventListener('click', () => {
+  initAudio();
+  window.focus();
+  document.getElementById('start').style.display = 'none';
+  running = true;
+  reset();
+  loadGame(); // continúa la partida guardada si existe
+});
+document.getElementById('restartbtn').addEventListener('click', () => {
+  document.getElementById('go').style.display = 'none';
+  running = true;
+  reset();
+});
+running = false;
+player = { x: 0, z: 24, y: 0, vy: 0, yawVis: Math.PI, hp: 100, armor: 0, money: 150, weapons: { pistol: true }, cur: 'pistol', ammo: { smg: 0, rifle: 0, shotgun: 0 }, anim: 0, walkAmt: 0, muzzleT: 0, lastFire: -9 };
+camYaw = Math.PI; camPitch = -0.32; camDist = 6;
+if (lsGet(SAVE_KEY)) document.getElementById('playbtn').textContent = 'CONTINUAR';
+genCity();
+</script>
+</body>
+</html>
