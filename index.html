@@ -59,7 +59,7 @@
 <div class="hud" id="msg"></div>
 <div class="hud" id="banner"></div>
 <div class="hud" id="cross">+</div>
-<div class="hud" id="hint">Ratón: mueve = cámara (estilo Minecraft) &nbsp;|&nbsp; Clic izq. = disparar &nbsp;|&nbsp; Espacio = saltar &nbsp;|&nbsp; V = cámara 1ª/3ª persona &nbsp;|&nbsp; E = interactuar &nbsp;|&nbsp; ESC = pausa &nbsp;|&nbsp; H = ocultar ayuda</div>
+<div class="hud" id="hint">Ratón: mueve = cámara (estilo Minecraft) &nbsp;|&nbsp; Clic izq. = disparar &nbsp;|&nbsp; Espacio = saltar &nbsp;|&nbsp; V = cámara 1ª/3ª persona &nbsp;|&nbsp; E = tienda / coche &nbsp;|&nbsp; ESC = pausa &nbsp;|&nbsp; H = ocultar ayuda</div>
 <div id="vig"></div>
 <div id="pauza">PAUSA</div>
 
@@ -71,7 +71,7 @@
     <div><b>Ratón (solo mover)</b> girar cámara &nbsp; <b>Rueda</b> zoom &nbsp; <b>V</b> cámara 1ª/3ª persona</div>
     <div><b>Clic izq.</b> disparar &nbsp; <b>Espacio</b> saltar</div>
     <div><b>1 - 4</b> elegir arma</div>
-    <div><b>E</b> entrar a tienda / comprar</div>
+    <div><b>E</b> tienda / coche (<b>W/S</b> conducir, atropella y dispara a los coches 💥)</div>
     <div><b>P</b> pausa &nbsp; <b>M</b> sonido &nbsp; <b>H</b> ayuda</div>
   </div>
   <button id="playbtn">JUGAR</button>
@@ -250,6 +250,7 @@ const sfx = {
   deny:   () => tone(120, 80, 0.15, 'square', 0.12),
   wave:   () => { tone(440,440,0.1,'square',0.1); setTimeout(()=>tone(587,587,0.1,'square',0.1),120); setTimeout(()=>tone(880,880,0.16,'square',0.1),240); },
   door:   () => tone(300, 500, 0.12, 'triangle', 0.14),
+  boom:  () => { tone(90, 25, 0.5, 'sawtooth', 0.3); tone(50, 20, 0.7, 'square', 0.25); },
   jump:   () => tone(180, 320, 0.12, 'square', 0.05),
 };
 
@@ -395,7 +396,7 @@ function genCity(){
     for (const b of obstacles){ if (x > b.x0 - 2.6 && x < b.x1 + 2.6 && z > b.z0 - 2.6 && z < b.z1 + 2.6){ bad = true; break; } }
     if (!bad) for (const c of cars){ if (Math.hypot(c.x - x, c.z - z) < 7){ bad = true; break; } }
     if (bad) continue;
-    const car = { x, z, yaw, vx: 0, vz: 0, driving: false, obs: null, col: CARCOLS[Math.floor(rnd() * CARCOLS.length)] };
+    const car = { x, z, yaw, vx: 0, vz: 0, driving: false, obs: null, hp: 140, dead: false, smokeT: 0, col: CARCOLS[Math.floor(rnd() * CARCOLS.length)] };
     carObsOn(car);
     cars.push(car);
   }
@@ -440,7 +441,7 @@ const WLIST = ['pistol', 'smg', 'rifle', 'shotgun'];
 
 let player, zombies, particles, tracers, mode, wave, kills, running, paused;
 let leaves = [], birds = [], leafT = 0; // hojas cayendo + pájaros volando
-let cars = [], clouds = []; // coches aparcados + nubes a la deriva
+let cars = [], clouds = [], peds = []; // coches aparcados + nubes + peatones
 let saveT = 3; // autoguardado cada 3 s
 let spawnLeft, aliveCap = 24, spawnTimer, betweenT, msgT, bannerT, curInteract;
 let lastFire = -9, lastHitT = -9, camYaw, camPitch, camDist, mouseDown, timeNow = 0;
@@ -477,6 +478,9 @@ function reset(){
   fpMode = true; fov = 1.05;
   mouseDown = false;
   genCity();
+  // peatones paseando por las calles
+  peds = [];
+  for (let i = 0; i < 24; i++) spawnPed();
   startWave();
   updHUD(true);
 }
@@ -633,7 +637,7 @@ function tryFire(held){
   for (let p = 0; p < pellets; p++){
     const d = fireDir(w.spread);
     const maxT = rayBuildings(ox, oz, d[0], d[2], 70);
-    // zombies
+    // enemigos
     let hit = null, hitT = maxT;
     for (const z of zombies){
       if (z.state === 'dying') continue;
@@ -645,10 +649,37 @@ function tryFire(held){
       const r = 0.55 * z.sc;
       if (px * px + pz * pz < r * r){ hit = z; hitT = Math.max(tc, 0.01); }
     }
+    // coches (cuerpo ~ cilindro de radio 1.8)
+    let hitCar = null;
+    for (const c of cars){
+      if (c.dead) continue;
+      const rx = c.x - ox, rz = c.z - oz;
+      const t = rx * d[0] + rz * d[2];
+      if (t < 0.2 || t >= hitT) continue;
+      const px = rx - d[0] * t, pz = rz - d[2] * t;
+      if (px * px + pz * pz < 1.8 * 1.8){ hitCar = c; hitT = t; hit = null; }
+    }
+    // peatones
+    let hitPed = null;
+    for (const q of peds){
+      if (q.state === 'dying') continue;
+      const rx = q.x - ox, rz = q.z - oz;
+      const t = rx * d[0] + rz * d[2];
+      if (t < -0.4 || t >= hitT) continue;
+      const tc = Math.max(t, 0);
+      const px = rx - d[0] * tc, pz = rz - d[2] * tc;
+      if (px * px + pz * pz < 0.5 * 0.5){ hitPed = q; hitT = Math.max(tc, 0.01); hit = null; hitCar = null; }
+    }
     const ex = ox + d[0] * hitT, ez = oz + d[2] * hitT;
     tracers.push({ x0: ox, y0: 1.5 + player.y, z0: oz, x1: ex, y1: 1.5 + player.y, z1: ez, life: 0.07 });
     if (hit) damageZombie(hit, w.dmg, d);
+    else if (hitCar) damageCar(hitCar, w.dmg, d);
+    else if (hitPed) damagePed(hitPed, w.dmg, d);
   }
+  // pánico: los peatones huyen de los disparos
+  for (const q of peds)
+    if (q.state !== 'dying' && Math.hypot(q.x - player.x, q.z - player.z) < 32)
+      q.panicT = Math.max(q.panicT, 2 + Math.random() * 2);
   updHUD();
 }
 function damageZombie(z, dmg, d){
@@ -684,9 +715,9 @@ function damagePlayer(dmg){
 
 /* ============ Zombies ============ */
 const ZTYPES = {
-  walker: { hp: 100, spd: 2.4, sc: 1.05, dmg: 10, skin: [0.42,0.60,0.34] },
-  runner: { hp: 70,  spd: 5.0, sc: 0.95, dmg: 8,  skin: [0.55,0.68,0.28] },
-  brute:  { hp: 300, spd: 1.8, sc: 1.45, dmg: 22, skin: [0.30,0.45,0.26] },
+  walker: { hp: 100, spd: 2.4, sc: 1.05, dmg: 10, skin: [0.82,0.62,0.46] },
+  runner: { hp: 70,  spd: 5.0, sc: 0.95, dmg: 8,  skin: [0.90,0.70,0.52] },
+  brute:  { hp: 300, spd: 1.8, sc: 1.45, dmg: 22, skin: [0.68,0.48,0.34] },
 };
 function spawnZombie(){
   const r = Math.random();
@@ -707,14 +738,145 @@ function spawnZombie(){
     let bad = false;
     for (const b of obstacles){ if (x > b.x0-1 && x < b.x1+1 && z > b.z0-1 && z < b.z1+1){ bad = true; break; } }
     if (bad) continue;
+    const SHIRTS = [[0.25,0.30,0.50],[0.50,0.20,0.20],[0.20,0.45,0.30],[0.55,0.50,0.15],[0.35,0.25,0.40],[0.80,0.75,0.70],[0.15,0.15,0.18]];
+    const PANTS = [[0.20,0.22,0.30],[0.35,0.30,0.25],[0.15,0.15,0.18],[0.40,0.35,0.30]];
     zombies.push({
       x, z, yaw: Math.random() * 6.28, type, hp: t.hp + (wave - 1) * 8, sc: t.sc, spd: t.spd * spdMul,
       state: 'walk', anim: Math.random() * 6, atkCd: 0, hitT: 0, deathT: 0,
       avoidT: 0, avoidDir: 1,
-      skin: t.skin, shirt: [0.3 + Math.random()*0.3, 0.2 + Math.random()*0.2, 0.25 + Math.random()*0.2],
+      skin: t.skin, shirt: SHIRTS[Math.floor(Math.random() * SHIRTS.length)],
+      pants: PANTS[Math.floor(Math.random() * PANTS.length)],
+      cap: Math.random() < 0.7 ? [0.10,0.10,0.13] : null, // gorras de pandilla
     });
     return;
   }
+}
+/* ---- peatones (pasean por las aceras, huyen de los disparos) ---- */
+function spawnPed(){
+  const SHIRTS = [[0.9,0.9,0.92],[0.2,0.4,0.7],[0.85,0.25,0.25],[0.3,0.6,0.4],[0.95,0.8,0.3],[0.5,0.35,0.6],[0.9,0.55,0.2],[0.25,0.25,0.28]];
+  const PANTS = [[0.25,0.30,0.50],[0.20,0.20,0.25],[0.50,0.40,0.30],[0.60,0.60,0.62]];
+  const SKINS = [[0.95,0.78,0.62],[0.85,0.62,0.45],[0.65,0.45,0.30],[0.50,0.33,0.22]];
+  for (let tries = 0; tries < 20; tries++){
+    const vertical = Math.random() < 0.5;
+    const si = Math.floor(Math.random() * (NB + 1));
+    const line = -HALF + ST / 2 + si * CELL;
+    const side = (Math.random() < 0.5 ? 1 : -1) * (ST / 2 - 1.1);
+    const along = -HALF + 6 + Math.random() * (CITY - 12);
+    let x, z, yaw;
+    if (vertical){ x = line + side; z = along; yaw = Math.random() < 0.5 ? 0 : Math.PI; }
+    else { z = line + side; x = along; yaw = Math.random() < 0.5 ? Math.PI / 2 : -Math.PI / 2; }
+    if (Math.hypot(x - player.x, z - player.z) < 14) continue;
+    let bad = false;
+    for (const b of obstacles){ if (x > b.x0 - 0.8 && x < b.x1 + 0.8 && z > b.z0 - 0.8 && z < b.z1 + 0.8){ bad = true; break; } }
+    if (bad) continue;
+    peds.push({
+      x, z, yaw, spd: 1.1 + Math.random() * 0.9, anim: Math.random() * 6,
+      turnT: 2 + Math.random() * 4, panicT: 0, hitT: 0,
+      hp: 30, state: 'walk', deathT: 0,
+      skin: SKINS[Math.floor(Math.random() * SKINS.length)],
+      shirt: SHIRTS[Math.floor(Math.random() * SHIRTS.length)],
+      pants: PANTS[Math.floor(Math.random() * PANTS.length)],
+      cap: Math.random() < 0.35 ? [0.15 + Math.random()*0.3, 0.15 + Math.random()*0.2, 0.12] : null,
+    });
+    return;
+  }
+}
+function damagePed(q, dmg, d){
+  if (q.state === 'dying') return;
+  q.hp -= dmg; q.hitT = 0.12;
+  q.panicT = Math.max(q.panicT, 3);
+  for (let i = 0; i < 4; i++) particles.push({
+    x: q.x, y: 1.1, z: q.z,
+    vx: (Math.random()-0.5)*3 + (d ? d[0]*2 : 0), vy: Math.random()*3, vz: (Math.random()-0.5)*3 + (d ? d[2]*2 : 0),
+    life: 0.5, col: [0.65, 0.08, 0.08], s: 0.09
+  });
+  sfx.hit();
+  if (q.hp <= 0){
+    q.state = 'dying'; q.deathT = 0;
+    player.money += 15; // sueltan algo de dinero (estilo GTA clásico)
+    updHUD();
+  }
+}
+function updatePeds(dt){
+  for (let i = peds.length - 1; i >= 0; i--){
+    const q = peds[i];
+    if (q.state === 'dying'){ q.deathT += dt; if (q.deathT > 1.6) peds.splice(i, 1); continue; }
+    q.hitT -= dt; q.turnT -= dt; q.panicT -= dt;
+    let spd = q.spd;
+    if (q.panicT > 0){
+      // pánico: corren lejos del jugador
+      const dx = q.x - player.x, dz = q.z - player.z, d = Math.hypot(dx, dz) || 1;
+      const wantYaw = Math.atan2(-dx / d, -dz / d);
+      let dy2 = wantYaw - q.yaw;
+      while (dy2 > Math.PI) dy2 -= 6.2832; while (dy2 < -Math.PI) dy2 += 6.2832;
+      q.yaw += dy2 * Math.min(1, dt * 5);
+      spd = q.spd * 2.6;
+    } else if (q.turnT <= 0){
+      q.turnT = 2 + Math.random() * 5;
+      q.yaw += (Math.random() - 0.5) * 1.2; // pequeño giro al pasear
+    }
+    const px2 = q.x, pz2 = q.z;
+    q.x += -Math.sin(q.yaw) * spd * dt;
+    q.z += -Math.cos(q.yaw) * spd * dt;
+    collideObstacles(q, 0.3);
+    if (Math.abs(q.x) > HALF - 1.5 || Math.abs(q.z) > HALF - 1.5){
+      q.x = Math.max(-HALF + 1.5, Math.min(HALF - 1.5, q.x));
+      q.z = Math.max(-HALF + 1.5, Math.min(HALF - 1.5, q.z));
+      q.yaw += Math.PI + (Math.random() - 0.5);
+    }
+    const moved = Math.hypot(q.x - px2, q.z - pz2);
+    if (moved < spd * dt * 0.3){ q.yaw += Math.PI * (0.5 + Math.random()); q.turnT = 2 + Math.random() * 3; }
+    q.anim += dt * (2 + spd);
+  }
+}
+/* ---- coches destructibles (balas → explosión estilo GTA) ---- */
+function damageCar(c, dmg, d){
+  if (c.dead) return;
+  c.hp -= dmg;
+  for (let i = 0; i < 5; i++) particles.push({
+    x: c.x, y: 0.8, z: c.z,
+    vx: (Math.random()-0.5)*4 + (d ? d[0]*3 : 0), vy: 1 + Math.random()*3, vz: (Math.random()-0.5)*4 + (d ? d[2]*3 : 0),
+    life: 0.4, col: [1, 0.75, 0.25], s: 0.07
+  });
+  sfx.hit();
+  if (c.hp <= 0) explodeCar(c);
+}
+function explodeCar(c){
+  if (c.dead) return;
+  c.dead = true; c.hp = 0; c.smokeT = 6;
+  if (c.driving){ // seguridad: si el jugador lo conducía, sale despedido
+    player.inCar = null; c.driving = false;
+    damagePlayer(35);
+  }
+  c.col = [0.10, 0.09, 0.09]; // carrocería calcinada
+  for (let i = 0; i < 36; i++){ // bola de fuego
+    const a = Math.random() * 6.28, r2 = Math.random() * 2.4;
+    particles.push({
+      x: c.x + Math.cos(a)*r2, y: 0.6 + Math.random()*2.6, z: c.z + Math.sin(a)*r2,
+      vx: Math.cos(a)*3, vy: 2 + Math.random()*5, vz: Math.sin(a)*3,
+      life: 0.5 + Math.random()*0.5,
+      col: [[1,0.6,0.15],[1,0.4,0.1],[0.35,0.35,0.35]][Math.floor(Math.random()*3)], s: 0.3
+    });
+  }
+  sfx.boom();
+  // onda expansiva: enemigos, peatones, jugador y coches cercanos (reacción en cadena)
+  for (const z of zombies){
+    if (z.state === 'dying') continue;
+    const dz2 = Math.hypot(z.x - c.x, z.z - c.z);
+    if (dz2 < 7) damageZombie(z, 130, [(z.x - c.x) / (dz2 || 1), (z.z - c.z) / (dz2 || 1)]);
+  }
+  for (const q of peds){
+    if (q.state === 'dying') continue;
+    const dq = Math.hypot(q.x - c.x, q.z - c.z);
+    if (dq < 7) damagePed(q, 120, [(q.x - c.x) / (dq || 1), (q.z - c.z) / (dq || 1)]);
+  }
+  for (const o of cars){
+    if (o === c || o.dead) continue;
+    if (Math.hypot(o.x - c.x, o.z - c.z) < 8) damageCar(o, 90, null);
+  }
+  const dpl = Math.hypot(player.x - c.x, player.z - c.z);
+  if (dpl < 7) damagePlayer(Math.round(45 * (1 - dpl / 7)));
+  for (const q of peds) if (q.state !== 'dying' && Math.hypot(q.x - c.x, q.z - c.z) < 34) q.panicT = Math.max(q.panicT, 2.5);
 }
 function collideObstacles(ent, rad){
   for (const b of obstacles){
@@ -746,6 +908,7 @@ function carObsOff(car){
   }
 }
 function enterCar(c){
+  if (c.dead) return;
   player.inCar = c;
   c.driving = true;
   carObsOff(c);
@@ -794,6 +957,11 @@ function driveCar(c, dt){
     for (const z of zombies){
       if (z.state === 'dying') continue;
       if (Math.hypot(z.x - c.x, z.z - c.z) < 2.3) damageZombie(z, 80 + sp2 * 5, n);
+    }
+    // atropellar peatones (estilo GTA)
+    for (const q of peds){
+      if (q.state === 'dying') continue;
+      if (Math.hypot(q.x - c.x, q.z - c.z) < 2.0) damagePed(q, 80 + sp2 * 5, n);
     }
   }
   player.x = c.x; player.z = c.z;
@@ -865,7 +1033,7 @@ function getInteractables(){
     }
     if (!player.inCar){
       for (const c of cars){
-        if (c.driving) continue;
+        if (c.driving || c.dead) continue;
         list.push({ x: c.x, z: c.z, r: 3.4, label: 'Entrar al COCHE [E]', type: 'car', car: c });
       }
     }
@@ -1034,6 +1202,17 @@ function update(dt){
       l.rot += dt * 2.5;
       if (l.y < 0.06) leaves.splice(i, 1);
     }
+    // humo de coches quemados
+    for (const c of cars) if (c.smokeT > 0){
+      c.smokeT -= dt;
+      if (Math.random() < dt * 8) particles.push({
+        x: c.x + (Math.random()-0.5)*1.5, y: 1.2, z: c.z + (Math.random()-0.5)*1.5,
+        vx: (Math.random()-0.5), vy: 2 + Math.random()*2, vz: (Math.random()-0.5),
+        life: 0.9, col: [0.25,0.25,0.25], s: 0.35
+      });
+    }
+    // peatones: pasean o huyen en pánico
+    updatePeds(dt);
     updateZombies(dt);
     const alive = zombies.filter(z => z.state !== 'dying').length;
     if (spawnLeft > 0){
@@ -1113,7 +1292,7 @@ function gameOver(){
   running = false;
   lsDel(SAVE_KEY); // morir borra la partida guardada — se empieza de cero
   document.getElementById('gostats').innerHTML =
-    'Sobreviviste hasta la oleada: <b>' + wave + '</b><br>Zombis eliminados: <b>' + kills + '</b><br>Dinero recogido: <b>$' + player.money + '</b>';
+    'Sobreviviste hasta la oleada: <b>' + wave + '</b><br>Enemigos abatidos: <b>' + kills + '</b><br>Dinero recogido: <b>$' + player.money + '</b>';
   document.getElementById('go').style.display = 'flex';
 }
 
@@ -1137,7 +1316,7 @@ function drawMinimap(){
   }
   // coches (celestes; el conducido, en blanco)
   for (const c of cars){
-    mmx.fillStyle = c.driving ? '#ffffff' : '#9ecbff';
+    mmx.fillStyle = c.dead ? '#5a5f66' : (c.driving ? '#ffffff' : '#9ecbff');
     mmx.fillRect((c.x + HALF) * s - 2, (c.z + HALF) * s - 2, 4, 4);
   }
   mmx.fillStyle = '#ff4444';
@@ -1283,169 +1462,3 @@ function render(){
       const py = b.h + Math.sin(b.yaw * 3 + b.ph) * 1.5;
       const heading = b.yaw + Math.PI / 2;
       const flap = Math.sin(timeNow * 9 + b.ph) * 0.55;
-      drawM(mul(T(px, py, pz), mul(Ry(heading), S(0.28, 0.1, 0.55))), nmat(heading, 0), [0.12, 0.12, 0.16], false);
-      for (const s of [-1, 1])
-        drawM(mul(T(px, py, pz), mul(Ry(heading), mul(Rz(flap * s), mul(T(s * 0.42, 0, 0), S(0.8, 0.05, 0.3))))), nmat(heading, 0), [0.16, 0.16, 0.2], false);
-    }
-    // coches
-    for (const c of cars){
-      const yaw = c.driving ? camYaw : c.yaw;
-      const fx2 = -Math.sin(yaw), fz2 = -Math.cos(yaw);
-      const rx2 = Math.cos(yaw), rz2 = -Math.sin(yaw);
-      box(c.x, 0.55, c.z, 2.0, 0.7, 4.5, yaw, c.col);
-      // cabina (cristal) — se oculta al conducir en 1ª persona
-      if (!(c.driving && fpMode))
-        box(c.x - fx2 * 0.7, 1.15, c.z - fz2 * 0.7, 1.8, 0.55, 2.2, yaw, [0.25, 0.30, 0.38]);
-      // ruedas
-      for (const s of [[1,1],[1,-1],[-1,1],[-1,-1]])
-        box(c.x + rx2 * s[0] * 0.95 + fx2 * s[1] * 1.6, 0.32,
-            c.z + rz2 * s[0] * 0.95 + fz2 * s[1] * 1.6, 0.36, 0.6, 0.75, yaw, [0.12, 0.12, 0.14]);
-      // faros delanteros (encendidos)
-      for (const s of [-1, 1])
-        box(c.x + rx2 * s * 0.6 + fx2 * 2.28, 0.62, c.z + rz2 * s * 0.6 + fz2 * 2.28, 0.3, 0.18, 0.12, yaw, [0.95, 0.9, 0.7], true);
-    }
-    // nubes
-    for (const cl of clouds)
-      for (const p of cl.parts) box(cl.x + p.ox, cl.y, cl.z + p.oz, p.sx, p.sy, p.sz, 0, [0.93, 0.95, 0.98]);
-    // hojas cayendo
-    for (const l of leaves) box(l.x, l.y, l.z, 0.2, 0.04, 0.26, l.rot, l.col);
-    // shops: sign + door + awning
-    for (const s of shops){
-      const isGun = s.kind === 'gun';
-      const scol = isGun ? [1, 0.55, 0.1] : [0.2, 0.85, 0.35];
-      box(s.doorX, 2.2, s.z + 7.9, 3.4, 4.4, 0.3, 0, [0.12, 0.09, 0.07]);              // door recess
-      box(s.doorX, 4.9, s.z + 8.0, 6.5, 1.2, 1.2, 0, isGun ? [0.85, 0.45, 0.15] : [0.9, 0.92, 0.95]); // awning
-      box(s.doorX, 8.2, s.z + 7.7, 10, 2.2, 0.6, 0, scol, true);                        // sign (emissive)
-      if (!isGun){ // red cross on sign
-        box(s.doorX, 8.2, s.z + 7.3, 0.9, 1.8, 0.3, 0, [1, 0.15, 0.15], true);
-        box(s.doorX, 8.2, s.z + 7.3, 1.8, 0.9, 0.3, 0, [1, 0.15, 0.15], true);
-      }
-    }
-    // boundary walls
-    box(0, 1.25, -HALF - 2, CITY + 8, 2.5, 1.4, 0, GRAY);
-    box(0, 1.25, HALF + 2, CITY + 8, 2.5, 1.4, 0, GRAY);
-    box(-HALF - 2, 1.25, 0, 1.4, 2.5, CITY + 8, 0, GRAY);
-    box(HALF + 2, 1.25, 0, 1.4, 2.5, CITY + 8, 0, GRAY);
-    // zombies
-    for (const z of zombies){
-      drawHumanoid(z.x, z.z, z.yaw, {
-        sc: z.sc, anim: z.anim, walkAmt: 1, zombie: true, skin: z.skin,
-        shirt: z.shirt, pants: [0.25, 0.25, 0.3], hitT: z.hitT,
-        dying: z.state === 'dying', deathT: z.deathT,
-      });
-    }
-  } else {
-    // ---- interior ----
-    const isGun = mode === 'gunshop';
-    const RX = isGun ? 12 : 11, RZ = isGun ? 8 : 7, WH = 4;
-    const wallC = isGun ? [0.35, 0.25, 0.18] : [0.88, 0.9, 0.92];
-    const floorC = isGun ? [0.3, 0.25, 0.2] : [0.75, 0.78, 0.8];
-    box(0, 0, 0, RX * 2, 0.08, RZ * 2, 0, floorC);
-    // walls with door gap on +Z
-    box(0, WH / 2, -RZ, RX * 2, WH, 0.5, 0, wallC);
-    box(-RX, WH / 2, 0, 0.5, WH, RZ * 2, 0, wallC);
-    box(RX, WH / 2, 0, 0.5, WH, RZ * 2, 0, wallC);
-    const gap = 2.2;
-    box(-(gap + (RX - gap) / 2), WH / 2, RZ, RX - gap, WH, 0.5, 0, wallC);
-    box((gap + (RX - gap) / 2), WH / 2, RZ, RX - gap, WH, 0.5, 0, wallC);
-    box(0, 0.06, RZ, 3.2, 0.12, 2.2, 0, [1, 0.85, 0.4], true); // exit mat
-    if (isGun){
-      // counter
-      box(0, 0.55, -0.6, 8, 1.1, 1.2, 0, [0.5, 0.35, 0.2]);
-      // pedestals + items
-      const px = [-7, -2.4, 2.4, 7];
-      const cols = [[0.25,0.25,0.28], [0.35,0.22,0.12], [0.45,0.25,0.15], [0.2,0.55,0.25]];
-      for (let i = 0; i < 4; i++){
-        box(px[i], 0.5, -3.2, 1.6, 1, 1.6, 0, [0.45, 0.45, 0.48]);
-        box(px[i], 1.25, -3.2, 0.5, 0.5, 1.1, 0, cols[i], true);
-      }
-      box(0, 3.2, -RZ + 0.4, 12, 1.6, 0.4, 0, [1, 0.55, 0.1], true);
-    } else {
-      // shelves
-      box(-9, 0.8, -1, 1.6, 1.6, 8, 0, [0.8, 0.82, 0.85]);
-      box(9, 0.8, -1, 1.6, 1.6, 8, 0, [0.8, 0.82, 0.85]);
-      box(-2.2, 0.5, -3.5, 1.2, 1, 1.2, 0, [1, 1, 1]);
-      box(2.2, 0.5, -3.5, 1.2, 1, 1.2, 0, [1, 1, 1]);
-      box(0, 0.5, -5.2, 1.2, 1, 1.2, 0, [0.3, 0.5, 0.9]);
-      // cross on wall
-      box(0, 3.2, -RZ + 0.4, 0.9, 2, 0.3, 0, [1, 0.15, 0.15], true);
-      box(0, 3.2, -RZ + 0.4, 2, 0.9, 0.3, 0, [1, 0.15, 0.15], true);
-    }
-  }
-
-  // player
-  if (!fpMode){
-    drawHumanoid(player.x, player.z, player.yawVis || 0, {
-      sc: 1, anim: player.anim, walkAmt: player.walkAmt, zombie: false, y: player.y,
-      skin: [0.85, 0.66, 0.5], shirt: [0.55, 0.15, 0.15], jacket: [0.42, 0.12, 0.12],
-      pants: [0.2, 0.25, 0.45], cap: [0.18, 0.18, 0.22], gun: true, cur: player.cur,
-      muzzleT: player.muzzleT, lastFire: player.lastFire,
-    });
-  } else {
-    // arma en primera persona (view-model) delante de la cámara, con balanceo al andar
-    const g = WEAPONS[player.cur].gun;
-    const fhx = -Math.sin(camYaw), fhz = -Math.cos(camYaw);
-    const rgx = Math.cos(camYaw), rgz = -Math.sin(camYaw);
-    const bob = Math.abs(Math.sin(player.anim * 0.5)) * 0.045 * player.walkAmt;
-    const k = 2.0;
-    const gx = eye[0] + fhx * 0.55 + rgx * 0.26;
-    const gz = eye[2] + fhz * 0.55 + rgz * 0.26;
-    const gy = eye[1] - 0.26 - bob;
-    box(gx, gy, gz, g[0] * k, g[1] * k, g[2] * k, camYaw, g[3]);
-    if (player.muzzleT > 0)
-      box(gx + fhx * (g[2] * k / 2 + 0.12), gy, gz + fhz * (g[2] * k / 2 + 0.12), 0.16, 0.16, 0.16, camYaw, [1, 0.9, 0.4], true);
-  }
-
-  // tracers
-  for (const t of tracers){
-    const dx = t.x1 - t.x0, dy = t.y1 - t.y0, dz = t.z1 - t.z0;
-    const len = Math.hypot(dx, dy, dz);
-    if (len < 0.01) continue;
-    const nx = dx / len, ny = dy / len, nz = dz / len;
-    const yaw = Math.atan2(-nx, -nz);
-    const rx = Math.asin(Math.max(-1, Math.min(1, ny)));
-    const M = mul(T(t.x0 + dx / 2, t.y0 + dy / 2, t.z0 + dz / 2),
-                  mul(Ry(yaw), mul(Rx(rx), S(0.05, 0.05, len))));
-    drawM(M, nmat(yaw, rx), [1, 0.95, 0.6], true);
-  }
-  // particles
-  for (const p of particles) box(p.x, p.y, p.z, p.s, p.s, p.s, 0, p.col);
-
-  drawMinimap();
-  updHUD();
-}
-
-/* ============ Main loop ============ */
-let lastT = performance.now();
-function frame(){
-  requestAnimationFrame(frame);
-  const now = performance.now();
-  let dt = Math.min(0.05, (now - lastT) / 1000);
-  lastT = now;
-  if (running && !paused) update(dt);
-  if (running) render();
-}
-frame();
-
-/* ============ Start / restart ============ */
-document.getElementById('playbtn').addEventListener('click', () => {
-  initAudio();
-  window.focus();
-  document.getElementById('start').style.display = 'none';
-  running = true;
-  reset();
-  loadGame(); // continúa la partida guardada si existe
-});
-document.getElementById('restartbtn').addEventListener('click', () => {
-  document.getElementById('go').style.display = 'none';
-  running = true;
-  reset();
-});
-running = false;
-player = { x: 0, z: 24, y: 0, vy: 0, yawVis: Math.PI, hp: 100, armor: 0, money: 150, weapons: { pistol: true }, cur: 'pistol', ammo: { smg: 0, rifle: 0, shotgun: 0 }, anim: 0, walkAmt: 0, muzzleT: 0, lastFire: -9 };
-camYaw = Math.PI; camPitch = -0.32; camDist = 6;
-if (lsGet(SAVE_KEY)) document.getElementById('playbtn').textContent = 'CONTINUAR';
-genCity();
-</script>
-</body>
-</html>

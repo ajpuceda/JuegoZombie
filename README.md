@@ -1,6 +1,6 @@
 # Zombie City 3D 🧟🎮
 
-Juego estilo GTA con zombis, hecho **100% en WebGL puro** — un solo archivo HTML, sin librerías ni dependencias.
+Juego estilo GTA, hecho **100% en WebGL puro** — un solo archivo HTML, sin librerías ni dependencias.
 
 ## 🕹️ Cómo jugar
 
@@ -30,23 +30,24 @@ Juego estilo GTA con zombis, hecho **100% en WebGL puro** — un solo archivo HT
 | `M` | Sonido on/off |
 | `H` | Mostrar/ocultar ayuda |
 
-## 🧟 Características
+## 🌆 Características
 
-- **🚗 Coches robables** — 18 coches aparcados por la ciudad: pulsa `E` para entrar, `W/S` para conducir y **atropella zombis** para ganar dinero (¡estilo GTA!). Los zombis no te hacen daño dentro del coche
+- **🚗 Coches robables y destructibles** — 18 coches aparcados: `E` para entrar, `W/S` para conducir y **atropella a la gente** para ganar dinero. ¡Dispara a los coches y explotan** con bola de fuego, humo y onda expansiva (¡reacción en cadena incluida!)
+- **🚶 Peatones por las calles** — la ciudad está viva: la gente pasea por las aceras, **huye en pánico al oír disparos** y suelta dinero si... bueno, estilo GTA clásico
+- **👤 Enemigos humanos** — oleadas de pandilleros (caminante, corredor y bruto) con ropa, gorras y piel humana — nada de zombis
 - **Partida guardada automáticamente** — la oleada, el dinero, las armas y la posición se conservan al recargar la página (botón *CONTINUAR*); morir borra la partida
-- **Zombis cada vez más rápidos** — cada oleada +7% de velocidad y +8 de vida (hasta +80%), ¡no te confíes!
+- **Enemigos cada vez más rápidos** — cada oleada +7% de velocidad y +8 de vida (hasta +80%), ¡no te confíes!
 - **Cámara en primera persona** con arma visible y balanceo al andar (V = cambiar a 3ª persona)
 - **Salto con Espacio** — física de gravedad, saltos encadenados estilo Minecraft
 - **Gráficos detallados**: edificios con ventanas (¡algunas encendidas!) y puertas, árboles con ramas y copas volumétricas, pájaros que vuelan, hojas que caen y **nubes a la deriva**
 - Ciudad 3D grande: calles, edificios, parques y dos tiendas a las que puedes entrar
-- Zombis de 3 tipos (caminante, corredor y bruto) en oleadas infinitas
-- 4 armas que se compran con el dinero de los zombis eliminados
+- 4 armas que se compran con el dinero de los enemigos eliminados
 - Armería (armas y munición) y farmacia (botiquines y chaleco antibalas)
 - Minimapa (¡con los coches marcados!), HUD retro, efectos de partículas y sonido chiptune
 
 ## 🛠️ Tecnología
 
-WebGL crudo con sombreadores propios, matemática de matrices escrita a mano y motor de juego completo (IA de zombis con evasión de obstáculos, raycast de balas, colisiones AABB, física de conducción, cámara con pointer lock estilo Minecraft, física de salto, guardado en localStorage) en ~1300 líneas de JavaScript sin ningún framework.
+WebGL crudo con sombreadores propios, matemática de matrices escrita a mano y motor de juego completo (IA de enemigos con evasión de obstáculos, peatones con paseo y pánico, raycast de balas contra enemigos/peatones/coches, explosiones con onda expansiva y reacción en cadena, colisiones AABB, física de conducción, cámara con pointer lock estilo Minecraft, física de salto, guardado en localStorage) en ~1500 líneas de JavaScript sin ningún framework.
 
 ---
 
