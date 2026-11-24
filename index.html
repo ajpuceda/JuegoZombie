@@ -39,6 +39,13 @@
   #go { display: none; }
   #go .stats { font-size: 18px; line-height: 2; margin-bottom: 24px; color: #dfe6f2; }
   #pauza { display: none; position: fixed; top: 40%; left: 50%; transform: translate(-50%,-50%); color: #fff; font-size: 34px; letter-spacing: 8px; z-index: 6; text-shadow: 3px 3px 0 #000; }
+  #loginbox { display: flex; flex-direction: column; align-items: center; gap: 8px; margin-bottom: 18px; }
+  #loginbox .lgTitle { font-size: 14px; color: #9ef26a; letter-spacing: 2px; }
+  .lginput { font-family: inherit; font-size: 15px; padding: 8px 12px; width: 230px; background: #10121a; color: #fff; border: 2px solid #5a6275; outline: none; text-align: center; }
+  .lginput:focus { border-color: #9ef26a; }
+  #lgmsg { font-size: 12px; color: #ffe9a8; min-height: 16px; }
+  .lgbtns { display: flex; gap: 10px; }
+  .overlay button.small { font-size: 13px; padding: 8px 16px; letter-spacing: 1px; }
 </style>
 </head>
 <body>
@@ -73,6 +80,16 @@
     <div><b>1 - 4</b> elegir arma</div>
     <div><b>E</b> tienda / coche (<b>W/S</b> conducir, atropella y dispara a los coches 💥)</div>
     <div><b>P</b> pausa &nbsp; <b>M</b> sonido &nbsp; <b>H</b> ayuda</div>
+  </div>
+  <div id="loginbox">
+    <div class="lgTitle">TU PROGRESO — SOLO TUYO:</div>
+    <input id="lguser" class="lginput" placeholder="Usuario (2-20 letras)" maxlength="20" autocomplete="off">
+    <input id="lgpass" class="lginput" placeholder="Contraseña (min. 3)" type="password" autocomplete="off">
+    <div id="lgmsg"></div>
+    <div class="lgbtns">
+      <button id="loginbtn" class="small">ENTRAR / CREAR CUENTA</button>
+      <button id="guestbtn" class="small">INVITADO (partida local)</button>
+    </div>
   </div>
   <button id="playbtn">JUGAR</button>
 </div>
@@ -274,14 +291,14 @@ const PALETTE = [
 ];
 
 function genCity(){
-  const rnd = mulberry(20261112);
+  const rnd = mulberry(CITY_SEED); // cada usuario tiene SU propia ciudad
   blocks.length = 0; obstacles.length = 0; buildings.length = 0; trees.length = 0; shops.length = 0;
   cars.length = 0;
 
   // ventanas iluminadas + puerta de un edificio (precalculado para dibujar rápido)
   function addDetail(b, withDoor){
     b.win = [];
-    const floors = Math.max(1, Math.min(6, Math.floor((b.sy - 3.4) / 2.6)));
+    const floors = Math.max(1, Math.min(b.tower ? 12 : 6, Math.floor((b.sy - 3.4) / 2.6)));
     const faces = [
       { ax: 'x', len: b.sx, fx: 0, fz: b.sz / 2 + 0.06 },
       { ax: 'x', len: b.sx, fx: 0, fz: -b.sz / 2 - 0.06 },
@@ -301,11 +318,7 @@ function genCity(){
         }
       }
     }
-    if (withDoor){
-      const s = rnd() < 0.5 ? 1 : -1;
-      if (rnd() < 0.5) b.door = { x: b.cx + (rnd() - 0.5) * (b.sx - 4), y: 1.15, z: b.cz + s * (b.sz / 2 + 0.08), sx: 1.5, sy: 2.3, sz: 0.16 };
-      else b.door = { x: b.cx + s * (b.sx / 2 + 0.08), y: 1.15, z: b.cz + (rnd() - 0.5) * (b.sz - 4), sx: 0.16, sy: 2.3, sz: 1.5 };
-    }
+    if (withDoor) b.wantDoor = true; // la puerta se elige en la segunda pasada (cuando TODOS los edificios existen)
   }
 
   // árbol con ramas (matrices precalculadas) y copa volumétrica de varias cajas
@@ -365,6 +378,17 @@ function genCity(){
       if (kind === 'gun') { GUN.x = b.cx; GUN.z = b.cz; } else { MED.x = b.cx; MED.z = b.cz; }
       // door + awning visuals handled in render
     } else {
+      if (rnd() < 0.18){
+        // BLOK-WIEŻOWIEC: un solo rascacielos alto tipo bloque de pisos
+        const w = 13 + rnd() * 6, d = 13 + rnd() * 6, h = 22 + rnd() * 14;
+        const px = b.x0 + 3 + w/2 + rnd() * Math.max(0.5, BS - 6 - w);
+        const pz = b.z0 + 3 + d/2 + rnd() * Math.max(0.5, BS - 6 - d);
+        const col = [0.40 + rnd() * 0.14, 0.50 + rnd() * 0.1, 0.60 + rnd() * 0.1]; // vidrio azulado de Blok
+        const nb2 = { cx: px, cy: h/2, cz: pz, sx: w, sy: h, sz: d, col, tower: true };
+        addDetail(nb2, true);
+        buildings.push(nb2);
+        obstacles.push({ x0: px - w/2, z0: pz - d/2, x1: px + w/2, z1: pz + d/2, h });
+      } else {
       const n = 2 + Math.floor(rnd() * 3);
       for (let k = 0; k < n; k++){
         const w = 9 + rnd() * 8, d = 9 + rnd() * 8, h = 6 + rnd() * 16;
@@ -376,7 +400,28 @@ function genCity(){
         buildings.push(nb2);
         obstacles.push({ x0: px - w/2, z0: pz - d/2, x1: px + w/2, z1: pz + d/2, h });
       }
+      }
     }
+  }
+  // segunda pasada: puerta en una cara REALMENTE accesible (ya existen TODOS los edificios)
+  for (const b of buildings){
+    if (!b.wantDoor) continue;
+    const cands = [];
+    for (const u of [-1, -0.6, 0, 0.6, 1]) for (const s of [1, -1]){
+      cands.push({ x: b.cx + u * Math.max(0, b.sx / 2 - 1.2), y: 1.15, z: b.cz + s * (b.sz / 2 + 0.08), sx: 1.5, sy: 2.3, sz: 0.16,
+        ax: b.cx + u * Math.max(0, b.sx / 2 - 1.2), az: b.cz + s * (b.sz / 2 + 1.4) });
+      cands.push({ x: b.cx + s * (b.sx / 2 + 0.08), y: 1.15, z: b.cz + u * Math.max(0, b.sz / 2 - 1.2), sx: 0.16, sy: 2.3, sz: 1.5,
+        ax: b.cx + s * (b.sx / 2 + 1.4), az: b.cz + u * Math.max(0, b.sz / 2 - 1.2) });
+    }
+    let good = null;
+    for (const dd of cands){
+      let blocked = false;
+      for (const o of obstacles)
+        if (dd.ax > o.x0 - 1.0 && dd.ax < o.x1 + 1.0 && dd.az > o.z0 - 1.0 && dd.az < o.z1 + 1.0){ blocked = true; break; }
+      if (!blocked){ good = dd; break; }
+    }
+    b.door = good || cands[0];
+    b.door.free = !!good; // sin acceso libre → radio de interacción más grande
   }
   // coches aparcados junto a las aceras (aleatorio determinista)
   const CARCOLS = [[0.75,0.16,0.16],[0.18,0.35,0.60],[0.85,0.70,0.20],[0.20,0.55,0.30],[0.80,0.80,0.82],[0.50,0.20,0.50],[0.90,0.45,0.10]];
@@ -436,27 +481,46 @@ function buildingInterior(b){
   const D = Math.max(10, Math.min(26, b.sz - 2.5));
   const RX = W / 2, RZ = D / 2;
   const obs = [];
-  // pilares / muebles aleatorios (deterministas por edificio)
+  // pilares / muebles aleatorios (deterministas por edificio), en el lado +x — fuera del hueco de escaleras
   const np = 2 + Math.floor(rnd() * 3);
   for (let i = 0; i < np; i++){
-    const px = (rnd() - 0.5) * (W - 7), pz = (rnd() - 0.5) * (D - 12);
+    const px = -RX + 7.8 + rnd() * Math.max(1, 2 * RX - 8.8);
+    const pz = (rnd() - 0.5) * Math.max(2, D - 7);
     obs.push({ x0: px - 0.8, z0: pz - 0.8, x1: px + 0.8, z1: pz + 0.8, h: 3 });
   }
   const items = [{ x: 0, z: RZ - 1.2, r: 2.2, label: 'Salir del edificio [E]', type: 'exit' }];
-  let stairs = null;
-  // edificio alto → escalera al entresuelo (sube hacia -z por la pared izquierda)
-  if (b.sy >= 12){
-    const x0 = -RX + 1.6, x1 = -RX + 5.0;
-    const zBot = RZ - 1.5, zTop = Math.min(-RZ + 4.2, zBot - 4.0);
-    const hh = 3.5;
-    // plataforma superior en la esquina -x/-z, conectada con la parte alta de la escalera
-    const px0 = -RX, px1 = x1, pz0 = -RZ, pz1 = zTop;
-    stairs = { x0, x1, z0: zTop, z1: zBot, hLow: 0, hHigh: hh, px0, px1, pz0, pz1, hh };
+  /* ¡VARIOS pisos! Biegos de escalera en zigzag + lądowanie cada piso.
+     FH=3.3: al saltar no atraviesas el techo del piso de abajo (salto 1.18 + margen 2.2 < 3.3). */
+  const FH = 3.3;
+  const F = Math.max(1, Math.min(6, Math.floor((b.sy - 4.6) / FH))); // pisos arriba del parter
+  const bxA = -RX + 0.8, band = 2.6, bxB = bxA + band + 0.2;
+  const zN = -RZ + 1.0, zS = RZ - 1.0;
+  const flights = [], landings = [], grounds = [];
+  for (let k = 0; k < F; k++){
+    const up = k % 2 === 0; // bieg parzysty w górę toward -z; nieparzysty wraca toward +z
+    const f = {
+      k, up,
+      x0: up ? bxA : bxB, x1: (up ? bxA : bxB) + band,
+      za: up ? zS : zN, zb: up ? zN : zS, // za=z przy y0, zb=z przy y1
+      y0: k * FH, y1: (k + 1) * FH,
+    };
+    flights.push(f);
+    grounds.push({ x0: f.x0, x1: f.x1, z0: Math.min(f.za, f.zb), z1: Math.max(f.za, f.zb), ramp: true, y0: f.y0, y1: f.y1, za: f.za, zb: f.zb });
   }
-  return { obs, grounds: stairs ? [
-      { x0: stairs.x0, z0: stairs.z0, x1: stairs.x1, z1: stairs.z1, ramp: true, hLow: stairs.hLow, hHigh: stairs.hHigh },
-      { x0: stairs.px0, z0: stairs.pz0, x1: stairs.px1, z1: stairs.pz1, h: stairs.hh },
-    ] : [], items, enterX: 0, enterZ: RZ - 2.4, stairs, RX, RZ };
+  for (let k = 1; k <= F; k++){
+    const north = k % 2 === 1; // la escalera 0 termina en el norte → lądowanie norte del piso 1
+    const l = {
+      k, north,
+      x0: bxA - 0.2, x1: bxB + band + 0.2,
+      z0: north ? -RZ + 0.2 : RZ - 2.2,
+      z1: north ? -RZ + 2.2 : RZ - 0.2,
+      y: k * FH,
+    };
+    landings.push(l);
+    grounds.push({ x0: l.x0, x1: l.x1, z0: l.z0, z1: l.z1, h: l.y });
+  }
+  const stairs = { FH, F, flights, landings };
+  return { obs, grounds, items, enterX: 0, enterZ: RZ - 2.4, stairs, RX, RZ, WH: F * FH + 2.4 };
 }
 
 /* ============ Game state ============ */
@@ -528,9 +592,59 @@ const SAVE_KEY = 'zc3d_save_v1';
 function lsGet(k){ try { return window.localStorage.getItem(k); } catch (e){ return null; } }
 function lsSet(k, v){ try { window.localStorage.setItem(k, v); return true; } catch (e){ return false; } }
 function lsDel(k){ try { window.localStorage.removeItem(k); } catch (e){} }
+/* ============ Cuentas: login y contraseña (cada uno tiene SU partida y SU ciudad) ============ */
+const USERS_KEY = 'zc3d_users_v1';
+let curUser = null;         // usuario con sesión iniciada (null = invitado)
+let userKey = SAVE_KEY;     // clave de guardado individual por usuario
+let CITY_SEED = 20261112;   // la ciudad se genera con semilla propia de cada usuario
+function usersGet(){ try { return JSON.parse(lsGet(USERS_KEY) || '{}') || {}; } catch (e){ return {}; } }
+function usersSave(u){ lsSet(USERS_KEY, JSON.stringify(u)); }
+function fnv1a(s){ // hash rápido (fallback sin crypto.subtle, p.ej. file://)
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++){ h ^= s.charCodeAt(i); h = (h * 16777619) >>> 0; }
+  return ('00000000' + h.toString(16)).slice(-8);
+}
+async function hashPwd(user, pass){
+  const s = 'zc3d#' + user.toLowerCase() + ':' + pass;
+  try {
+    if (typeof crypto !== 'undefined' && crypto.subtle){
+      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+      let o = ''; for (const b2 of new Uint8Array(buf)) o += b2.toString(16).padStart(2, '0');
+      return o;
+    }
+  } catch (e){}
+  return fnv1a(s) + fnv1a('|2|' + s) + fnv1a('|3|' + s) + fnv1a('|4|' + s);
+}
+function seedOf(user){ // cada usuario tiene su propia ciudad
+  const h = fnv1a('city:' + user.toLowerCase());
+  return (parseInt(h.slice(0, 8), 16) | 0);
+}
+async function accountLogin(user, pass){
+  user = (user || '').trim();
+  if (user.length < 2 || user.length > 20) return { ok: false, error: 'Usuario: 2-20 caracteres' };
+  if (!pass || pass.length < 3) return { ok: false, error: 'Contraseña: mínimo 3 caracteres' };
+  const h = await hashPwd(user, pass);
+  const ukey = user.toLowerCase(); // klucz konta zawsze małe litery
+  const users = usersGet();
+  const isNew = !users[ukey];
+  if (!isNew && users[ukey].p !== h) return { ok: false, error: 'Contraseña incorrecta para "' + user + '"' };
+  if (isNew){ users[ukey] = { p: h, name: user, created: Date.now() }; usersSave(users); }
+  curUser = user;
+  userKey = SAVE_KEY + '_u_' + ukey;
+  CITY_SEED = seedOf(user);
+  return { ok: true, user, isNew };
+}
+function startPlay(){
+  initAudio();
+  window.focus();
+  document.getElementById('start').style.display = 'none';
+  running = true;
+  reset();
+  loadGame(); // continúa la partida guardada del USUARIO (o del invitado)
+}
 function saveGame(){
   if (mode !== 'city' || !player) return;
-  lsSet(SAVE_KEY, JSON.stringify({
+  lsSet(userKey, JSON.stringify({
     v: 1, wave, kills,
     money: player.money, hp: player.hp, armor: player.armor,
     weapons: player.weapons, ammo: player.ammo, cur: player.cur,
@@ -540,7 +654,7 @@ function saveGame(){
 }
 function loadGame(){
   let s = null;
-  try { s = JSON.parse(lsGet(SAVE_KEY) || 'null'); } catch (e){ s = null; }
+  try { s = JSON.parse(lsGet(userKey) || 'null'); } catch (e){ s = null; }
   if (!s || s.v !== 1 || typeof s.wave !== 'number') return false;
   try {
     player.money = s.money || 150;
@@ -653,8 +767,25 @@ function rayBuildings(ox, oz, dx, dz, maxT){
   }
   return best;
 }
+// raycast del jugador contra pilares/muebles del interior (espejo de rayBuildings)
+function interiorRay(ox, oz, dx, dz, maxT){
+  let best = maxT;
+  for (const b of interiorObs){
+    let tmin = 0, tmax = best, ok = true;
+    const p = [ox, oz], d = [dx, dz], lo = [b.x0, b.z0], hi = [b.x1, b.z1];
+    for (let i = 0; i < 2; i++){
+      if (Math.abs(d[i]) < 1e-9){ if (p[i] < lo[i] || p[i] > hi[i]) { ok = false; break; } continue; }
+      let t1 = (lo[i] - p[i]) / d[i], t2 = (hi[i] - p[i]) / d[i];
+      if (t1 > t2){ const tt = t1; t1 = t2; t2 = tt; }
+      tmin = Math.max(tmin, t1); tmax = Math.min(tmax, t2);
+      if (tmin > tmax){ ok = false; break; }
+    }
+    if (ok && tmin > 0.01 && tmin < best) best = tmin;
+  }
+  return best;
+}
 function tryFire(held){
-  if (mode !== 'city') return; // se puede disparar a pie y conduciendo
+  if (mode !== 'city' && mode !== 'building') return; // fuera, en coche y también dentro de edificios
   const w = WEAPONS[player.cur];
   if (timeNow - lastFire < w.cd) return;
   if (w.ammo !== Infinity && player.ammo[player.cur] <= 0){ if(!held) sfx.deny(); showMsg('¡Sin munición!'); return; }
@@ -667,7 +798,7 @@ function tryFire(held){
   const ox = player.x - Math.sin(camYaw) * 0.7, oz = player.z - Math.cos(camYaw) * 0.7;
   for (let p = 0; p < pellets; p++){
     const d = fireDir(w.spread);
-    const maxT = rayBuildings(ox, oz, d[0], d[2], 70);
+    const maxT = mode === 'city' ? rayBuildings(ox, oz, d[0], d[2], 70) : interiorRay(ox, oz, d[0], d[2], 40);
     // enemigos
     let hit = null, hitT = maxT;
     for (const z of zombies){
@@ -807,9 +938,12 @@ function spawnCop(){
       state: 'walk', anim: Math.random() * 6, atkCd: 0, hitT: 0, deathT: 0,
       avoidT: 0, avoidDir: 1,
       skin: ZTYPES.cop.skin,
-      shirt: [0.25,0.40,0.95], // uniforme azul brillante — fácil de reconocer
-      pants: [0.12,0.14,0.28],
+      shirt: [0.13,0.20,0.60], // uniforme azul marino oscuro
+      pants: [0.10,0.12,0.24],
       cap: [0.95,0.95,0.98], // gorra blanca policial — visible a distancia
+      vest: [0.98,0.75,0.08], // chaleco reflectante amarillo — se distingue de lejos
+      fireT: 0, aimT: 0, insideB: false, breachT: 0,
+      aimNeed: 1.3 + Math.random() * 0.9, // retardo de reacción: NO dispara de inmediato
     });
     return true;
   }
@@ -1105,19 +1239,25 @@ function updateZombies(dt){
       z.atkCd = 1.0;
       damagePlayer(ZTYPES[z.type].dmg);
     } else if (z.type === 'cop' && z.atkCd <= 0 && mode === 'city' && dist > 1.2 && dist < 34){
-      // la policía dispara al jugador — a pie o dentro del coche
+      // la policía dispara al jugador — a pie o dentro del coche; PERO primero apunta
       const d2 = [ (player.x - z.x) / (dist || 1), (player.z - z.z) / (dist || 1) ];
       if (rayBuildings(z.x, z.z, d2[0], d2[1], dist) >= dist - 0.5){ // línea de visión limpia
-        z.atkCd = 1.15 + Math.random() * 0.5;
-        z.fireT = 0.14;
-        sfx.pistol();
-        tracers.push({ x0: z.x, y0: 1.5, z0: z.z, x1: player.x, y1: 1.3 + player.y + (player.inCar ? 0.5 : 0), z1: player.z, life: 0.07 });
-        if (player.inCar){
-          damagePlayer(7); // a través de la ventanilla
-          damageCar(player.inCar, 9, null);
-        } else {
-          damagePlayer(9);
+        z.aimT += dt; // "!" rojo visible sobre la cabeza mientras apunta
+        if (z.aimT >= z.aimNeed){ // retardo de reacción cumplido → dispara
+          z.aimT = z.aimNeed;
+          z.atkCd = 1.15 + Math.random() * 0.5;
+          z.fireT = 0.14;
+          sfx.pistol();
+          tracers.push({ x0: z.x, y0: 1.5, z0: z.z, x1: player.x, y1: 1.3 + player.y + (player.inCar ? 0.5 : 0), z1: player.z, life: 0.07 });
+          if (player.inCar){
+            damagePlayer(7); // a través de la ventanilla
+            damageCar(player.inCar, 9, null);
+          } else {
+            damagePlayer(9);
+          }
         }
+      } else {
+        z.aimT = 0; // sin línea de visión → baja el arma
       }
     }
   }
@@ -1153,7 +1293,7 @@ function getInteractables(){
     const list = [];
     for (const b of buildings){
       if (!b.door) continue;
-      list.push({ x: b.door.x, z: b.door.z, r: 2.6, label: 'Entrar al EDIFICIO [E]', type: 'benter', b });
+      list.push({ x: b.door.x, z: b.door.z, r: b.door.free === false ? 4.4 : 2.6, label: 'Entrar al EDIFICIO [E]', type: 'benter', b });
     }
     for (const s of shops){
       list.push({
@@ -1183,13 +1323,27 @@ function doInteract(){
     interiorItemsCache = bi.items;
     interiorObs = bi.obs;
     interiorGrounds = bi.grounds;
-    interiorDims = { RX: bi.RX, RZ: bi.RZ, stairs: bi.stairs };
+    interiorDims = { RX: bi.RX, RZ: bi.RZ, stairs: bi.stairs, WH: bi.WH };
     curBldg = it.b;
     player.prevX = player.x; player.prevZ = player.z;
     player.x = bi.enterX; player.z = bi.enterZ; player.y = 0; player.vy = 0;
     player.yawVis = 0; camYaw = 0;
     sfx.door();
-    showMsg(bi.stairs ? 'EDIFICIO — escaleras a la izquierda, salida [E]' : 'EDIFICIO — salida [E]');
+    showMsg(bi.stairs ? 'EDIFICIO de ' + (bi.stairs.F + 1) + ' plantas — escaleras: sube y sube · salida [E]' : 'EDIFICIO — salida [E]');
+    // la policía que te perseguía ENTRA detrás de ti, uno tras otro (estilo GTA)
+    const nMax = Math.min(wanted, 3);
+    let nIn = 0;
+    for (const z of zombies){
+      if (z.type !== 'cop' || z.state === 'dying' || nIn >= nMax) continue;
+      z.insideB = true;
+      z.x = (nIn - (nMax - 1) / 2) * 1.1;
+      z.z = bi.RZ - 0.4; // en el umbral de la puerta
+      z.yaw = 0; // de cara al interior
+      z.breachT = 0.5 + nIn * 0.7; // cruzan la puerta uno a uno
+      z.atkCd = 1.2; z.fireT = 0; z.aimT = 0; // al entrar tienen que volver a apuntar
+      nIn++;
+    }
+    if (nIn > 0){ showMsg('¡La POLICÍA te sigue DENTRO!'); sfx.wave(); }
     return;
   }
   if (it.type === 'enter'){
@@ -1208,7 +1362,16 @@ function doInteract(){
     player.x = player.prevX; player.z = player.prevZ;
     player.y = 0; player.vy = 0;
     player.yawVis = Math.PI; camYaw = Math.PI;
-    interiorGrounds = []; curBldg = null; interiorDims = { RX: 11.4, RZ: 7.4, stairs: null };
+    interiorGrounds = []; curBldg = null; interiorDims = { RX: 11.4, RZ: 7.4, stairs: null, WH: 4.4 };
+    // los policías del interior salen contigo y siguen la persecución en la calle
+    for (const z of zombies){
+      if (z.type === 'cop' && z.insideB){
+        z.insideB = false; z.breachT = 0;
+        z.x = player.x + (Math.random() - 0.5) * 4;
+        z.z = player.z + 1.5 + Math.random() * 2.5;
+        z.atkCd = 1.2; z.fireT = 0; z.aimT = 0;
+      }
+    }
     sfx.door();
   } else if (it.type === 'buyw'){
     if (player.weapons[it.w]){ showMsg('¡Ya tienes esta arma!'); sfx.deny(); return; }
@@ -1246,10 +1409,64 @@ function doInteract(){
   }
 }
 let interiorObs = [], interiorKind = 'gun';
-let interiorGrounds = [], interiorDims = { RX: 11.4, RZ: 7.4, stairs: null }, curBldg = null; // edificios: escaleras y medidas del interior
+let interiorGrounds = [], interiorDims = { RX: 11.4, RZ: 7.4, stairs: null, WH: 4.4 }, curBldg = null; // edificios: escaleras y medidas del interior
 function interiorBounds(){
   if (mode === 'building') return { RX: interiorDims.RX, RZ: interiorDims.RZ };
   return interiorKind === 'gun' ? { RX: 11.4, RZ: 7.4 } : { RX: 10.4, RZ: 6.4 };
+}
+
+/* ---- la policía te persigue DENTRO de los edificios ---- */
+function updateCopsInside(dt){
+  const RB = interiorBounds();
+  for (const z of zombies){
+    if (z.type !== 'cop' || !z.insideB || z.state === 'dying') continue;
+    if (z.breachT > 0){ z.breachT -= dt; continue; } // cruzando la puerta
+    z.atkCd -= dt; z.hitT -= dt;
+    if (z.fireT > 0) z.fireT -= dt;
+    const dx = player.x - z.x, dz = player.z - z.z;
+    const dist = Math.hypot(dx, dz);
+    const wantYaw = Math.atan2(-dx, -dz);
+    let dy = wantYaw - z.yaw;
+    while (dy > Math.PI) dy -= 6.2832; while (dy < -Math.PI) dy += 6.2832;
+    z.yaw += dy * Math.min(1, dt * 4);
+    if (dist > 1.3){
+      z.x += -Math.sin(z.yaw) * z.spd * dt;
+      z.z += -Math.cos(z.yaw) * z.spd * dt;
+      z.anim += dt * (2 + z.spd);
+    }
+    // no atraviesa pilares ni muebles
+    for (const b of interiorObs){
+      const rad = 0.4;
+      if (z.x > b.x0 - rad && z.x < b.x1 + rad && z.z > b.z0 - rad && z.z < b.z1 + rad){
+        const dxl = z.x - (b.x0 - rad), dxr = (b.x1 + rad) - z.x;
+        const dzl = z.z - (b.z0 - rad), dzr = (b.z1 + rad) - z.z;
+        const m = Math.min(dxl, dxr, dzl, dzr);
+        if (m === dxl) z.x = b.x0 - rad; else if (m === dxr) z.x = b.x1 + rad;
+        else if (m === dzl) z.z = b.z0 - rad; else z.z = b.z1 + rad;
+      }
+    }
+    z.x = Math.max(-RB.RX + 0.4, Math.min(RB.RX - 0.4, z.x));
+    z.z = Math.max(-RB.RZ + 0.4, Math.min(RB.RZ - 0.4, z.z));
+    // golpea de cerca; a distancia apunta (con retardo) y luego dispara
+    const d2 = [ dx / (dist || 1), dz / (dist || 1) ];
+    if (dist < 1.6 && player.y < 1.6 && z.atkCd <= 0){
+      z.atkCd = 1.0;
+      damagePlayer(ZTYPES.cop.dmg);
+    } else if (z.atkCd <= 0 && dist < 26
+        && interiorRay(z.x, z.z, d2[0], d2[1], dist) >= dist - 0.4){
+      z.aimT += dt; // "!" rojo mientras apunta
+      if (z.aimT >= z.aimNeed){
+        z.aimT = z.aimNeed;
+        z.atkCd = 1.15 + Math.random() * 0.5;
+        z.fireT = 0.14;
+        sfx.pistol();
+        tracers.push({ x0: z.x, y0: 1.5, z0: z.z, x1: player.x, y1: 1.3 + player.y, z1: player.z, life: 0.07 });
+        damagePlayer(9);
+      }
+    } else if (dist >= 26){
+      if (z.aimT < z.aimNeed) z.aimT = 0; // fuera de alcance: baja el arma
+    }
+  }
 }
 
 /* ============ Update ============ */
@@ -1293,8 +1510,8 @@ function update(dt){
       if (pxq >= g.x0 && pxq <= g.x1 && pzq >= g.z0 && pzq <= g.z1){
         let h;
         if (g.ramp){
-          const tt = Math.max(0, Math.min(1, (g.z1 - pzq) / (g.z1 - g.z0)));
-          h = g.hLow + (g.hHigh - g.hLow) * tt;
+          const tt = Math.max(0, Math.min(1, (pzq - g.za) / (g.zb - g.za))); // zigzag: za→y0, zb→y1
+          h = g.y0 + (g.y1 - g.y0) * tt;
         } else h = g.h;
         if (player.y >= h - 2.2 && h > gH) gH = h; // alcanzable: subida de escalón
       }
@@ -1408,6 +1625,8 @@ function update(dt){
         if (betweenT <= 0) startWave();
       }
     }
+  } else if (mode === 'building'){
+    updateCopsInside(dt); // la policía que te sigue dentro del edificio
   }
 
   // particles
@@ -1464,7 +1683,7 @@ function banner(t, dur){
 }
 function gameOver(){
   running = false;
-  lsDel(SAVE_KEY); // morir borra la partida guardada — se empieza de cero
+  lsDel(userKey); // morir borra la partida guardada del usuario — se empieza de cero
   document.getElementById('gostats').innerHTML =
     'Sobreviviste hasta la oleada: <b>' + wave + '</b><br>Enemigos abatidos: <b>' + kills + '</b><br>Dinero recogido: <b>$' + player.money + '</b>';
   document.getElementById('go').style.display = 'flex';
@@ -1531,6 +1750,7 @@ function drawHumanoid(x, z, yaw, o){
   limb(B, yaw, -0.17 * s, 0.85 * s, 0, 0.24 * s, 0.85 * s, 0.26 * s, -swing, o.pants);
   // torso
   boxRel(B, yaw, 0, 1.28 * s, 0, 0.56 * s, 0.9 * s, 0.34 * s, o.hitT > 0 ? [0.8, 0.3, 0.25] : o.shirt);
+  if (o.vest) boxRel(B, yaw, 0, 1.26 * s, 0.01, 0.65 * s, 1.0 * s, 0.46 * s, o.vest, true); // chaleco reflectante
   // head
   boxRel(B, yaw, 0, 1.98 * s, 0, 0.42 * s, 0.42 * s, 0.42 * s, skin);
   // ojos en la cara
@@ -1559,6 +1779,18 @@ function drawHumanoid(x, z, yaw, o){
   }
 }
 
+// marcas del policía: fogonazo al disparar + "!" rojo mientras apunta (ves QUIÉN y CUÁNDO dispara)
+function copMarks(z){
+  if (z.fireT > 0)
+    box(z.x - Math.sin(z.yaw) * 0.85, 1.52, z.z - Math.cos(z.yaw) * 0.85, 0.36, 0.36, 0.36, 0, [1, 0.95, 0.55], true);
+  if (z.fireT > 0){ // fogonazo lateral extra en la boca de la pistola
+    box(z.x - Math.sin(z.yaw + 0.42) * 0.55, 1.42, z.z - Math.cos(z.yaw + 0.42) * 0.55, 0.22, 0.22, 0.22, 0, [1, 0.8, 0.3], true);
+  }
+  if (z.aimT > 0 && z.aimT < z.aimNeed){ // "!" rojo sobre la cabeza: ¡va a disparar!
+    box(z.x, 2.98, z.z, 0.13, 0.34, 0.13, z.yaw, [1, 0.2, 0.12], true);
+    box(z.x, 2.68, z.z, 0.13, 0.13, 0.13, z.yaw, [1, 0.2, 0.12], true);
+  }
+}
 function render(){
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
   // camera
@@ -1682,18 +1914,19 @@ function render(){
     box(0, 1.25, HALF + 2, CITY + 8, 2.5, 1.4, 0, GRAY);
     box(-HALF - 2, 1.25, 0, 1.4, 2.5, CITY + 8, 0, GRAY);
     box(HALF + 2, 1.25, 0, 1.4, 2.5, CITY + 8, 0, GRAY);
-    // enemigos (humanos — estilo GTA)
+    // enemigos (humanos — estilo GTA); los policías con chaleco reflectante y pistola en mano
     for (const z of zombies){
+      const isCop = z.type === 'cop';
       drawHumanoid(z.x, z.z, z.yaw, {
         sc: z.sc, anim: z.anim, walkAmt: 1, zombie: false, skin: z.skin,
         shirt: z.shirt, pants: z.pants || [0.25, 0.25, 0.3], cap: z.cap, hitT: z.hitT,
+        vest: isCop, gun: isCop, cur: 'pistol',
+        muzzleT: z.fireT > 0 ? 0.08 : 0, lastFire: z.fireT > 0 ? timeNow : -9,
         dying: z.state === 'dying', deathT: z.deathT,
       });
     }
-    // fogonazo del disparo policial
-    for (const z of zombies)
-      if (z.type === 'cop' && z.fireT > 0)
-        box(z.x - Math.sin(z.yaw) * 0.85, 1.5, z.z - Math.cos(z.yaw) * 0.85, 0.28, 0.28, 0.28, 0, [1, 0.9, 0.5], true);
+    // marca policial: fogonazo + "!" rojo mientras apunta
+    for (const z of zombies) if (z.type === 'cop') copMarks(z);
     // peatones paseando por las aceras
     for (const q of peds){
       drawHumanoid(q.x, q.z, q.yaw, {
@@ -1705,7 +1938,7 @@ function render(){
   } else {
     // ---- edificio (interior con escaleras) ----
     if (mode === 'building'){
-      const RX = interiorDims.RX, RZ = interiorDims.RZ, WH = 4.4;
+      const RX = interiorDims.RX, RZ = interiorDims.RZ, WH = interiorDims.WH || 4.4;
       const wallC = (curBldg && curBldg.col) || [0.55, 0.55, 0.6];
       const floorC = [0.42, 0.38, 0.34];
       box(0, -0.02, 0, RX * 2, 0.08, RZ * 2, 0, floorC);
@@ -1718,25 +1951,46 @@ function render(){
       box(0, 0.06, RZ - 0.3, 3.2, 0.12, 1.4, 0, [1, 0.85, 0.4], true); // felpudo de salida
       // pilares / muebles
       for (const o of interiorObs) box((o.x0 + o.x1) / 2, o.h / 2, (o.z0 + o.z1) / 2, o.x1 - o.x0, o.h, o.z1 - o.z0, 0, [0.52, 0.47, 0.40]);
-      // escaleras al entresuelo (solo edificios altos)
+      // escalera de VARIOS pisos: biegów + lądowania + barandillas — se ve cada planta
       const st = interiorDims.stairs;
       if (st){
-        const steps = 8;
-        for (let i = 0; i < steps; i++){
-          const t0 = i / steps, t1 = (i + 1) / steps;
-          const zA = st.z1 + (st.z0 - st.z1) * t1, zB = st.z1 + (st.z0 - st.z1) * t0;
-          const hA = st.hHigh * t0;
-          box((st.x0 + st.x1) / 2, hA / 2, (zA + zB) / 2, st.x1 - st.x0, Math.max(0.1, hA), zB - zA + 0.03, 0, [0.56, 0.51, 0.43]);
+        for (const f of st.flights){
+          const steps = 8;
+          const fx = (f.x0 + f.x1) / 2;
+          for (let i = 0; i < steps; i++){
+            const t0 = i / steps, t1 = (i + 1) / steps;
+            const zA = f.za + (f.zb - f.za) * t1, zB = f.za + (f.zb - f.za) * t0;
+            const hA = (f.y1 - f.y0) * t0;
+            box(fx, f.y0 + hA / 2, (zA + zB) / 2, f.x1 - f.x0, Math.max(0.1, hA), Math.abs(zB - zA) + 0.03, 0, [0.56, 0.51, 0.43]);
+            box(f.x1 + 0.06, f.y0 + hA + 0.45, (zA + zB) / 2, 0.09, 0.9, Math.abs(zB - zA) + 0.03, 0, [0.85, 0.55, 0.18]); // barandilla
+          }
         }
-        // losa del entresuelo + barandilla + lámpara
-        box((st.px0 + st.px1) / 2, st.hh - 0.08, (st.pz0 + st.pz1) / 2, st.px1 - st.px0, 0.16, st.pz1 - st.pz0, 0, [0.48, 0.43, 0.36]);
-        box((st.px0 + st.px1) / 2, st.hh + 0.5, st.pz1 + 0.08, st.px1 - st.px0, 0.9, 0.12, 0, [0.85, 0.55, 0.18]);
-        box(-RX + 1.0, st.hh - 0.2, (st.pz0 + st.pz1) / 2, 1.6, 0.08, 0.4, 0, [1, 0.9, 0.6], true);
+        for (const l of st.landings){
+          const lx = (l.x0 + l.x1) / 2, lz = (l.z0 + l.z1) / 2;
+          box(lx, l.y - 0.08, lz, l.x1 - l.x0, 0.16, l.z1 - l.z0, 0, [0.48, 0.43, 0.36]); // losa del piso
+          const rz = l.north ? l.z1 + 0.05 : l.z0 - 0.05; // lado abierto hacia el hueco
+          box(lx, l.y + 0.5, rz, l.x1 - l.x0, 0.9, 0.11, 0, [0.85, 0.55, 0.18]); // barandilla del hueco
+          box(l.x0 - 0.2, l.y + 0.12, lz, 0.12, 0.5, 0.42, 0, [1, 0.85, 0.35], true); // lámpara del piso
+        }
       }
-      // ventanas iluminadas de la ciudad en las paredes
-      for (const s of [-1, 1]) for (let i = 0; i < 3; i++)
-        box(s * (RX - 0.24), 2.0, -RZ + 3 + i * (2 * RZ - 6) / 2, 0.1, 1.1, 1.3, 0, [0.9, 0.87, 0.72], true);
+      // ventanas iluminadas en cada planta
+      const stF = st ? st.F : 1, stFH = st ? st.FH : 3.3;
+      for (let k = 0; k < stF; k++)
+        for (const s of [-1, 1]) for (let i = 0; i < 3; i++)
+          box(s * (RX - 0.24), k * stFH + 2.0, -RZ + 3 + i * (2 * RZ - 6) / 2, 0.1, 1.1, 1.3, 0, [0.9, 0.87, 0.72], true);
       box(0, WH - 0.15, 0, 2.2, 0.08, 0.6, 0, [1, 0.95, 0.7], true); // lámpara de techo
+      // los policías que te han seguido dentro del edificio
+      for (const z of zombies){
+        if (z.type !== 'cop' || !z.insideB || z.breachT > 0) continue; // breachT: aún tras la puerta
+        drawHumanoid(z.x, z.z, z.yaw, {
+          sc: z.sc, anim: z.anim, walkAmt: 1, zombie: false, skin: z.skin,
+          shirt: z.shirt, pants: z.pants, cap: z.cap, hitT: z.hitT,
+          vest: true, gun: true, cur: 'pistol',
+          muzzleT: z.fireT > 0 ? 0.08 : 0, lastFire: z.fireT > 0 ? timeNow : -9,
+          dying: z.state === 'dying', deathT: z.deathT,
+        });
+        copMarks(z);
+      }
     } else {
     // ---- interior ----
     const isGun = mode === 'gunshop';
@@ -1832,14 +2086,30 @@ function frame(){
 frame();
 
 /* ============ Start / restart ============ */
-document.getElementById('playbtn').addEventListener('click', () => {
-  initAudio();
-  window.focus();
-  document.getElementById('start').style.display = 'none';
-  running = true;
-  reset();
-  loadGame(); // continúa la partida guardada si existe
+const lgUser = document.getElementById('lguser'), lgPass = document.getElementById('lgpass'), lgMsg = document.getElementById('lgmsg');
+lgUser.addEventListener('keydown', (e) => { if (e.code === 'Enter') lgPass.focus(); });
+lgPass.addEventListener('keydown', (e) => {
+  if (e.code === 'Enter'){
+    e.preventDefault();
+    document.getElementById('loginbtn').click();
+  }
 });
+document.getElementById('loginbtn').addEventListener('click', async () => {
+  lgMsg.style.color = '#ffe9a8';
+  lgMsg.textContent = 'Comprobando...';
+  const r = await accountLogin(lgUser.value, lgPass.value);
+  if (!r.ok){ lgMsg.style.color = '#ff8073'; lgMsg.textContent = '✖ ' + r.error; return; }
+  lgMsg.style.color = '#9ef26a';
+  lgMsg.textContent = (r.isNew ? '✔ CUENTA CREADA: ' : '✔ SESIÓN: ') + r.user + ' · tu partida y tu ciudad son SOLO tuyas';
+  document.title = 'Zombie City 3D — ' + r.user;
+  if (lsGet(userKey)) document.getElementById('playbtn').textContent = 'CONTINUAR (' + r.user + ')';
+  setTimeout(startPlay, 350); // brecha para ver el mensaje y entra
+});
+document.getElementById('guestbtn').addEventListener('click', () => {
+  curUser = null; userKey = SAVE_KEY; CITY_SEED = 20261112;
+  startPlay();
+});
+document.getElementById('playbtn').addEventListener('click', startPlay);
 document.getElementById('restartbtn').addEventListener('click', () => {
   document.getElementById('go').style.display = 'none';
   running = true;
