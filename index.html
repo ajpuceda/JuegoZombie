@@ -443,6 +443,7 @@ let player, zombies, particles, tracers, mode, wave, kills, running, paused;
 let leaves = [], birds = [], leafT = 0; // hojas cayendo + pájaros volando
 let cars = [], clouds = [], peds = []; // coches aparcados + nubes + peatones
 let saveT = 3; // autoguardado cada 3 s
+let wanted = 0, wantedT = 0, lastCrime = -9; // nivel de búsqueda: la policía responde a los ataques a civiles
 let spawnLeft, aliveCap = 24, spawnTimer, betweenT, msgT, bannerT, curInteract;
 let lastFire = -9, lastHitT = -9, camYaw, camPitch, camDist, mouseDown, timeNow = 0;
 let fpMode = true, fov = 1.05; // primera persona por defecto — tecla V alterna 1ª/3ª persona
@@ -476,6 +477,7 @@ function reset(){
   spawnLeft = 0; spawnTimer = 0; betweenT = 0; curInteract = null;
   camYaw = Math.PI; camPitch = -0.32; camDist = 6;
   fpMode = true; fov = 1.05;
+  wanted = 0; wantedT = 0; lastCrime = -9;
   mouseDown = false;
   genCity();
   // peatones paseando por las calles
@@ -683,6 +685,7 @@ function tryFire(held){
   updHUD();
 }
 function damageZombie(z, dmg, d){
+  if (z.type === 'cop') crime(); // atacar a la policía también sube la búsqueda
   z.hp -= dmg; z.hitT = 0.12;
   z.x += d[0] * 0.25; z.z += d[2] * 0.25;
   for (let i = 0; i < 4; i++) particles.push({
@@ -694,8 +697,8 @@ function damageZombie(z, dmg, d){
   if (z.hp <= 0){
     z.state = 'dying'; z.deathT = 0;
     kills++;
-    const rew = z.type === 'brute' ? 70 : z.type === 'runner' ? 30 : 20;
-    player.money += rew;
+    const rew = z.type === 'cop' ? 0 : z.type === 'brute' ? 70 : z.type === 'runner' ? 30 : 20;
+    if (rew > 0) player.money += rew;
     sfx.zdie();
     updHUD();
   }
@@ -718,6 +721,7 @@ const ZTYPES = {
   walker: { hp: 100, spd: 2.4, sc: 1.05, dmg: 10, skin: [0.82,0.62,0.46] },
   runner: { hp: 70,  spd: 5.0, sc: 0.95, dmg: 8,  skin: [0.90,0.70,0.52] },
   brute:  { hp: 300, spd: 1.8, sc: 1.45, dmg: 22, skin: [0.68,0.48,0.34] },
+  cop:    { hp: 120, spd: 3.1, sc: 1.0,  dmg: 14, skin: [0.85,0.62,0.45] },
 };
 function spawnZombie(){
   const r = Math.random();
@@ -750,6 +754,49 @@ function spawnZombie(){
     });
     return;
   }
+}
+/* ---- policía: se defiende cuando atacas a la gente (estilo GTA) ---- */
+function copsAlive(){ return zombies.filter(z => z.type === 'cop' && z.state !== 'dying').length; }
+function spawnCop(){
+  for (let tries = 0; tries < 60; tries++){
+    const vertical = Math.random() < 0.5;
+    const si = Math.floor(Math.random() * (NB + 1));
+    const line = -HALF + ST / 2 + si * CELL;
+    const side = (Math.random() < 0.5 ? 1 : -1) * (1.0 + Math.random() * (ST / 2 - 2.0));
+    const along = -HALF + 8 + Math.random() * (CITY - 16);
+    let x, z;
+    if (vertical){ x = line + side; z = along; }
+    else { z = line + side; x = along; }
+    const dp = Math.hypot(x - player.x, z - player.z);
+    if (dp < 20 || dp > 70) continue;
+    let bad = false;
+    for (const b of obstacles){ if (x > b.x0-1 && x < b.x1+1 && z > b.z0-1 && z < b.z1+1){ bad = true; break; } }
+    if (bad) continue;
+    zombies.push({
+      x, z, yaw: Math.atan2(-(player.x - x), -(player.z - z)), type: 'cop',
+      hp: ZTYPES.cop.hp, sc: ZTYPES.cop.sc, spd: ZTYPES.cop.spd,
+      state: 'walk', anim: Math.random() * 6, atkCd: 0, hitT: 0, deathT: 0,
+      avoidT: 0, avoidDir: 1,
+      skin: ZTYPES.cop.skin,
+      shirt: [0.15,0.20,0.42], // uniforme azul
+      pants: [0.12,0.14,0.28],
+      cap: [0.08,0.10,0.25], // gorra policial
+    });
+    return true;
+  }
+  return false;
+}
+function crime(){
+  wantedT = 0;
+  if (timeNow - lastCrime >= 2.5){
+    lastCrime = timeNow;
+    if (wanted < 3){
+      wanted++;
+      showMsg('¡POLICIA! ' + '★'.repeat(wanted));
+      sfx.wave();
+    }
+  }
+  while (copsAlive() < wanted + 1 && copsAlive() < 6) if (!spawnCop()) break;
 }
 /* ---- peatones (pasean por las aceras, huyen de los disparos) ---- */
 function spawnPed(){
@@ -796,6 +843,7 @@ function damagePed(q, dmg, d){
     player.money += 15; // sueltan algo de dinero (estilo GTA clásico)
     updHUD();
   }
+  crime(); // atacar civiles avisa a la policía
 }
 function updatePeds(dt){
   for (let i = peds.length - 1; i >= 0; i--){
@@ -860,7 +908,7 @@ function explodeCar(c){
   }
   sfx.boom();
   // onda expansiva: enemigos, peatones, jugador y coches cercanos (reacción en cadena)
-  for (const z of zombies){
+  for (const z of zombies.slice()){
     if (z.state === 'dying') continue;
     const dz2 = Math.hypot(z.x - c.x, z.z - c.z);
     if (dz2 < 7) damageZombie(z, 130, [(z.x - c.x) / (dz2 || 1), (z.z - c.z) / (dz2 || 1)]);
@@ -1211,6 +1259,11 @@ function update(dt){
         life: 0.9, col: [0.25,0.25,0.25], s: 0.35
       });
     }
+    // la búsqueda baja si pasas un rato sin líos y sin policía viva
+    if (wanted > 0){
+      wantedT += dt;
+      if (wantedT > 40 && copsAlive() === 0){ wanted = 0; showMsg('Policía: te pierde de vista'); updHUD(); }
+    }
     // peatones: pasean o huyen en pánico
     updatePeds(dt);
     updateZombies(dt);
@@ -1272,7 +1325,7 @@ function updHUD(force){
   const w = WEAPONS[player.cur];
   document.getElementById('wname').textContent = w.name;
   document.getElementById('wammo').innerHTML = w.ammo === Infinity ? '&#8734;' : player.ammo[player.cur];
-  document.getElementById('topwave').textContent = 'OLEADA ' + wave + '  |  Bajas: ' + kills;
+  document.getElementById('topwave').textContent = 'OLEADA ' + wave + '  |  Bajas: ' + kills + (wanted > 0 ? '  |  POLICIA ' + '★'.repeat(wanted) : '');
 }
 let msgTimer = null;
 function showMsg(t){

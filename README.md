@@ -6,10 +6,7 @@ Juego estilo GTA, hecho **100% en WebGL puro** — un solo archivo HTML, sin lib
 
 **Opción 1 (local):** descarga `index.html` y ábrelo con doble clic en cualquier navegador.
 
-**Opción 2 (online):** activa *GitHub Pages*:
-1. En este repo: **Settings → Pages**
-2. Source: **Deploy from a branch** → rama `main`, carpeta `(root)`
-3. En 1-2 minutos estará en `https://ajpuceda.github.io/JuegoZombie/`
+**Opción 2 (online):** juega directo en `https://ajpuceda.github.io/JuegoZombie/` (GitHub Pages, rama `main`, carpeta `(root)`).
 
 ## ⌨️ Controles
 
@@ -32,22 +29,22 @@ Juego estilo GTA, hecho **100% en WebGL puro** — un solo archivo HTML, sin lib
 
 ## 🌆 Características
 
-- **🚗 Coches robables y destructibles** — 18 coches aparcados: `E` para entrar, `W/S` para conducir y **atropella a la gente** para ganar dinero. ¡Dispara a los coches y explotan** con bola de fuego, humo y onda expansiva (¡reacción en cadena incluida!)
-- **🚶 Peatones por las calles** — la ciudad está viva: la gente pasea por las aceras, **huye en pánico al oír disparos** y suelta dinero si... bueno, estilo GTA clásico
-- **👤 Enemigos humanos** — oleadas de pandilleros (caminante, corredor y bruto) con ropa, gorras y piel humana — nada de zombis
+- **👮 ¡Policía que se defiende!** — ataca a los civiles (o a un policía) y sube tu nivel de búsqueda ★★★: uniformados azules aparecen, **te persiguen y te pegan**. Pásate 40 s sin líos y sin policía viva, y te pierden de vista (estilo GTA)
+- **🚗 Coches robables y destructibles** — 18 coches aparcados: `E` para entrar, `W/S` para conducir y **atropella a la gente** para ganar dinero. ¡Dispara a los coches y explotan con bola de fuego, humo y onda expansiva (reacción en cadena incluida!)
+- **🚶 Peatones por las calles** — la ciudad está viva: la gente pasea por las aceras, huye en pánico al oír disparos y suelta dinero si... bueno, estilo GTA clásico
+- **👤 Enemigos humanos** — oleadas de pandilleros (caminante, corredor y bruto) con ropa, gorras y piel humana
 - **Partida guardada automáticamente** — la oleada, el dinero, las armas y la posición se conservan al recargar la página (botón *CONTINUAR*); morir borra la partida
-- **Enemigos cada vez más rápidos** — cada oleada +7% de velocidad y +8 de vida (hasta +80%), ¡no te confíes!
+- **Enemigos cada vez más rápidos** — cada oleada +7% de velocidad y +8 de vida (hasta +80%)
 - **Cámara en primera persona** con arma visible y balanceo al andar (V = cambiar a 3ª persona)
 - **Salto con Espacio** — física de gravedad, saltos encadenados estilo Minecraft
-- **Gráficos detallados**: edificios con ventanas (¡algunas encendidas!) y puertas, árboles con ramas y copas volumétricas, pájaros que vuelan, hojas que caen y **nubes a la deriva**
+- **Gráficos detallados**: edificios con ventanas y puertas, árboles volumétricos, pájaros, hojas que caen y **nubes a la deriva**
 - Ciudad 3D grande: calles, edificios, parques y dos tiendas a las que puedes entrar
-- 4 armas que se compran con el dinero de los enemigos eliminados
-- Armería (armas y munición) y farmacia (botiquines y chaleco antibalas)
-- Minimapa (¡con los coches marcados!), HUD retro, efectos de partículas y sonido chiptune
+- 4 armas, armería y farmacia (botiquines y chaleco)
+- Minimapa (¡con los coches marcados!), HUD retro con nivel de búsqueda, efectos de partículas y sonido chiptune suave
 
 ## 🛠️ Tecnología
 
-WebGL crudo con sombreadores propios, matemática de matrices escrita a mano y motor de juego completo (IA de enemigos con evasión de obstáculos, peatones con paseo y pánico, raycast de balas contra enemigos/peatones/coches, explosiones con onda expansiva y reacción en cadena, colisiones AABB, física de conducción, cámara con pointer lock estilo Minecraft, física de salto, guardado en localStorage) en ~1500 líneas de JavaScript sin ningún framework.
+WebGL crudo con sombreadores propios, matemática de matrices escrita a mano y motor de juego completo (IA de enemigos con evasión de obstáculos, peatones con paseo y pánico, sistema de búsqueda con policía que responde a los ataques, raycast de balas contra enemigos/peatones/coches, explosiones con reacción en cadena, colisiones AABB, física de conducción, guardado en localStorage) en ~1600 líneas de JavaScript sin ningún framework.
 
 ---
 
