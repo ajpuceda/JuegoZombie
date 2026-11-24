@@ -17,9 +17,9 @@ Juego estilo GTA, hecho **100% en WebGL puro** — un solo archivo HTML, sin lib
 | `V` | **Cámara 1ª / 3ª persona** (por defecto: 1ª persona) |
 | `Shift` | Correr |
 | `Rueda del ratón` | Zoom (FOV en 1ª persona) |
-| `Clic izq.` | **Disparar** (mantén para automáticas) |
+| `Clic izq.` | **Disparar** — también **desde el coche** |
 | `Espacio` | **Saltar** (mantén = saltos encadenados) |
-| `E` | Entrar a tiendas / comprar / **entrar-salir del coche** |
+| `E` | Entrar a **edificios** y tiendas / comprar / entrar-salir del coche |
 | `W / S` (en coche) | **Acelerar / frenar** — el ratón gira el volante |
 | `1 - 4` | Armas: Pistola (∞) · SMG · Fusil · Escopeta |
 | `ESC` | Pausa (clic para volver) |
@@ -29,22 +29,23 @@ Juego estilo GTA, hecho **100% en WebGL puro** — un solo archivo HTML, sin lib
 
 ## 🌆 Características
 
-- **👮 ¡Policía que se defiende!** — ataca a los civiles (o a un policía) y sube tu nivel de búsqueda ★★★: uniformados azules aparecen, **te persiguen y te pegan**. Pásate 40 s sin líos y sin policía viva, y te pierden de vista (estilo GTA)
-- **🚗 Coches robables y destructibles** — 18 coches aparcados: `E` para entrar, `W/S` para conducir y **atropella a la gente** para ganar dinero. ¡Dispara a los coches y explotan con bola de fuego, humo y onda expansiva (reacción en cadena incluida!)
-- **🚶 Peatones por las calles** — la ciudad está viva: la gente pasea por las aceras, huye en pánico al oír disparos y suelta dinero si... bueno, estilo GTA clásico
-- **👤 Enemigos humanos** — oleadas de pandilleros (caminante, corredor y bruto) con ropa, gorras y piel humana
-- **Partida guardada automáticamente** — la oleada, el dinero, las armas y la posición se conservan al recargar la página (botón *CONTINUAR*); morir borra la partida
-- **Enemigos cada vez más rápidos** — cada oleada +7% de velocidad y +8 de vida (hasta +80%)
-- **Cámara en primera persona** con arma visible y balanceo al andar (V = cambiar a 3ª persona)
-- **Salto con Espacio** — física de gravedad, saltos encadenados estilo Minecraft
-- **Gráficos detallados**: edificios con ventanas y puertas, árboles volumétricos, pájaros, hojas que caen y **nubes a la deriva**
-- Ciudad 3D grande: calles, edificios, parques y dos tiendas a las que puedes entrar
+- **🏢 ¡Puedes entrar en TODOS los edificios!** — puerta marcada, `E` para entrar. Los edificios altos tienen **escaleras hasta un entresuelo** con vistas a la ciudad (y desde donde disparar 😏)
+- **👮 Policía que DISPARA** — uniforme azul brillante y gorra blanca para reconocerlos de lejos. Un poco más rápidos que los civiles, **te disparan a pie y también al coche** (¡pueden volarlo!)
+- **🚗 Conduce y dispara a la vez** — dentro del coche puedes disparar con clic (tu coche no recibe tus balas)
+- **🚶 Peatones que esquivan autos** — la gente pasea por las aceras, huye de los disparos y **salta a un lado** si intentas atropellarla
+- **👁️ Personajes con ojos** — todos los humanoides del juego tienen cara con ojos
+- **★★★ Nivel de búsqueda GTA** — ataca civiles o policía y sube el nivel: aparecen más policías. Pásate 40 s sin líos y te pierden
+- **🚗 Coches robables y destructibles** — 18 coches aparcados: `E` para entrar, `W/S` para conducir. Dispara a los coches y explotan con bola de fuego, humo y reacción en cadena
+- **👤 Enemigos humanos** — oleadas de pandilleros (caminante, corredor y bruto), cada oleada +7% velocidad y +8 vida (hasta +80%)
+- **Partida guardada automáticamente** — oleada, dinero, armas y posición se conservan al recargar (botón *CONTINUAR*); morir borra la partida
+- **Cámara en primera persona** con arma visible y balanceo al andar (V = 3ª persona)
+- **Gráficos detallados**: ventanas y puertas, árboles volumétricos, pájaros, hojas que caen, **nubes a la deriva**
 - 4 armas, armería y farmacia (botiquines y chaleco)
-- Minimapa (¡con los coches marcados!), HUD retro con nivel de búsqueda, efectos de partículas y sonido chiptune suave
+- Minimapa (¡coches y policía marcados!), HUD retro con nivel de búsqueda, partículas y sonido chiptune suave
 
 ## 🛠️ Tecnología
 
-WebGL crudo con sombreadores propios, matemática de matrices escrita a mano y motor de juego completo (IA de enemigos con evasión de obstáculos, peatones con paseo y pánico, sistema de búsqueda con policía que responde a los ataques, raycast de balas contra enemigos/peatones/coches, explosiones con reacción en cadena, colisiones AABB, física de conducción, guardado en localStorage) en ~1600 líneas de JavaScript sin ningún framework.
+WebGL crudo con sombreadores propios, matrices a mano y motor completo: IA con evasión de obstáculos, policía que persigue y dispara (a pie y a coches), peatones con paseo, pánico y esquiva, interiores generados por edificio con escaleras físicas, raycast de balas contra enemigos/peatones/coches, explosiones en cadena, AABB, física de conducción, guardado en localStorage — en un único archivo HTML sin frameworks.
 
 ---
 

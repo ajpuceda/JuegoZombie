@@ -429,6 +429,35 @@ function shopInterior(kind){
   items.push({ x: 0, z: 6.6, r: 1.8, label: 'Salir de la tienda [E]', type: 'exit' });
   return { obs, items, enterX: 0, enterZ: 3.2 };
 }
+/* ---- interiores de edificios (todos con puerta; los altos con escaleras) ---- */
+function buildingInterior(b){
+  const rnd = mulberry(Math.round((b.cx + HALF) * 1301 + (b.cz + HALF) * 37 + 11));
+  const W = Math.max(10, Math.min(26, b.sx - 2.5));
+  const D = Math.max(10, Math.min(26, b.sz - 2.5));
+  const RX = W / 2, RZ = D / 2;
+  const obs = [];
+  // pilares / muebles aleatorios (deterministas por edificio)
+  const np = 2 + Math.floor(rnd() * 3);
+  for (let i = 0; i < np; i++){
+    const px = (rnd() - 0.5) * (W - 7), pz = (rnd() - 0.5) * (D - 12);
+    obs.push({ x0: px - 0.8, z0: pz - 0.8, x1: px + 0.8, z1: pz + 0.8, h: 3 });
+  }
+  const items = [{ x: 0, z: RZ - 1.2, r: 2.2, label: 'Salir del edificio [E]', type: 'exit' }];
+  let stairs = null;
+  // edificio alto → escalera al entresuelo (sube hacia -z por la pared izquierda)
+  if (b.sy >= 12){
+    const x0 = -RX + 1.6, x1 = -RX + 5.0;
+    const zBot = RZ - 1.5, zTop = Math.min(-RZ + 4.2, zBot - 4.0);
+    const hh = 3.5;
+    // plataforma superior en la esquina -x/-z, conectada con la parte alta de la escalera
+    const px0 = -RX, px1 = x1, pz0 = -RZ, pz1 = zTop;
+    stairs = { x0, x1, z0: zTop, z1: zBot, hLow: 0, hHigh: hh, px0, px1, pz0, pz1, hh };
+  }
+  return { obs, grounds: stairs ? [
+      { x0: stairs.x0, z0: stairs.z0, x1: stairs.x1, z1: stairs.z1, ramp: true, hLow: stairs.hLow, hHigh: stairs.hHigh },
+      { x0: stairs.px0, z0: stairs.pz0, x1: stairs.px1, z1: stairs.pz1, h: stairs.hh },
+    ] : [], items, enterX: 0, enterZ: RZ - 2.4, stairs, RX, RZ };
+}
 
 /* ============ Game state ============ */
 const WEAPONS = {
@@ -625,7 +654,7 @@ function rayBuildings(ox, oz, dx, dz, maxT){
   return best;
 }
 function tryFire(held){
-  if (mode !== 'city' || player.inCar) return;
+  if (mode !== 'city') return; // se puede disparar a pie y conduciendo
   const w = WEAPONS[player.cur];
   if (timeNow - lastFire < w.cd) return;
   if (w.ammo !== Infinity && player.ammo[player.cur] <= 0){ if(!held) sfx.deny(); showMsg('¡Sin munición!'); return; }
@@ -651,10 +680,10 @@ function tryFire(held){
       const r = 0.55 * z.sc;
       if (px * px + pz * pz < r * r){ hit = z; hitT = Math.max(tc, 0.01); }
     }
-    // coches (cuerpo ~ cilindro de radio 1.8)
+    // coches (cuerpo ~ cilindro de radio 1.8; el propio no recibe tus balas)
     let hitCar = null;
     for (const c of cars){
-      if (c.dead) continue;
+      if (c.dead || c.driving) continue;
       const rx = c.x - ox, rz = c.z - oz;
       const t = rx * d[0] + rz * d[2];
       if (t < 0.2 || t >= hitT) continue;
@@ -721,7 +750,7 @@ const ZTYPES = {
   walker: { hp: 100, spd: 2.4, sc: 1.05, dmg: 10, skin: [0.82,0.62,0.46] },
   runner: { hp: 70,  spd: 5.0, sc: 0.95, dmg: 8,  skin: [0.90,0.70,0.52] },
   brute:  { hp: 300, spd: 1.8, sc: 1.45, dmg: 22, skin: [0.68,0.48,0.34] },
-  cop:    { hp: 120, spd: 3.1, sc: 1.0,  dmg: 14, skin: [0.85,0.62,0.45] },
+  cop:    { hp: 120, spd: 3.6, sc: 1.0,  dmg: 14, skin: [0.85,0.62,0.45] },
 };
 function spawnZombie(){
   const r = Math.random();
@@ -778,9 +807,9 @@ function spawnCop(){
       state: 'walk', anim: Math.random() * 6, atkCd: 0, hitT: 0, deathT: 0,
       avoidT: 0, avoidDir: 1,
       skin: ZTYPES.cop.skin,
-      shirt: [0.15,0.20,0.42], // uniforme azul
+      shirt: [0.25,0.40,0.95], // uniforme azul brillante — fácil de reconocer
       pants: [0.12,0.14,0.28],
-      cap: [0.08,0.10,0.25], // gorra policial
+      cap: [0.95,0.95,0.98], // gorra blanca policial — visible a distancia
     });
     return true;
   }
@@ -862,6 +891,40 @@ function updatePeds(dt){
     } else if (q.turnT <= 0){
       q.turnT = 2 + Math.random() * 5;
       q.yaw += (Math.random() - 0.5) * 1.2; // pequeño giro al pasear
+    }
+    // esquivar coches que llegan rápido (se apartan antes de ser atropellados)
+    for (const cc of cars){
+      if (cc.dead) continue;
+      if (Math.hypot(cc.vx, cc.vz) < 4) continue;
+      const dd2 = Math.hypot(q.x - cc.x, q.z - cc.z);
+      if (dd2 < 7){
+        if (!q.yawSeed) q.yawSeed = Math.random() < 0.5 ? -1 : 1;
+        const ddx = q.x - cc.x, ddz = q.z - cc.z;
+        let vx2 = ddx, vz2 = ddz;
+        if (Math.abs(ddx) < 1.2) vx2 += q.yawSeed * 2.5; // salto lateral fuera de la trayectoria
+        const nn = Math.hypot(vx2, vz2) || 1;
+        q.yaw = Math.atan2(-vx2 / nn, -vz2 / nn);
+        q.panicT = Math.max(q.panicT, 1.3);
+        spd = q.spd * 3.0; // corren más rápido esquivando
+      }
+    }
+    // esquivar coches que llegan rápido (se apartan lateralmente antes de ser atropellados)
+    for (const c of cars){
+      if (c.dead) continue;
+      const sp2 = Math.hypot(c.vx, c.vz);
+      if (sp2 < 4) continue;
+      const dd = Math.hypot(q.x - c.x, q.z - c.z);
+      if (dd < 7){
+        q.panicT = Math.max(q.panicT, 1.3);
+        let vx2 = q.x - c.x, vz2 = q.z - c.z;
+        if (Math.abs(vx2) < 0.6){ // coche en línea recta hacia él → salto lateral
+          if (q.yawSeed === undefined) q.yawSeed = Math.random() < 0.5 ? -1 : 1;
+          vx2 += q.yawSeed * 2.0;
+        }
+        const nn = Math.hypot(vx2, vz2) || 1;
+        q.yaw = Math.atan2(-vx2 / nn, -vz2 / nn);
+        spd = q.spd * 3.0;
+      }
     }
     const px2 = q.x, pz2 = q.z;
     q.x += -Math.sin(q.yaw) * spd * dt;
@@ -961,7 +1024,7 @@ function enterCar(c){
   c.driving = true;
   carObsOff(c);
   sfx.door();
-  showMsg('COCHE — W/S: gas/freno · ratón: girar · E: salir');
+  showMsg('COCHE — W/S: gas/freno · ratón: apuntar · clic: DISPARAR · E: salir');
 }
 function exitCar(){
   const c = player.inCar;
@@ -1037,9 +1100,25 @@ function updateZombies(dt){
       z.z += -Math.cos(a) * spd * dt * 1.3;
     }
     z.anim += dt * (2 + spd);
+    if (z.fireT > 0) z.fireT -= dt;
     if (dist < 1.4 + 0.5 * z.sc && z.atkCd <= 0 && !player.inCar){
       z.atkCd = 1.0;
       damagePlayer(ZTYPES[z.type].dmg);
+    } else if (z.type === 'cop' && z.atkCd <= 0 && mode === 'city' && dist > 1.2 && dist < 34){
+      // la policía dispara al jugador — a pie o dentro del coche
+      const d2 = [ (player.x - z.x) / (dist || 1), (player.z - z.z) / (dist || 1) ];
+      if (rayBuildings(z.x, z.z, d2[0], d2[1], dist) >= dist - 0.5){ // línea de visión limpia
+        z.atkCd = 1.15 + Math.random() * 0.5;
+        z.fireT = 0.14;
+        sfx.pistol();
+        tracers.push({ x0: z.x, y0: 1.5, z0: z.z, x1: player.x, y1: 1.3 + player.y + (player.inCar ? 0.5 : 0), z1: player.z, life: 0.07 });
+        if (player.inCar){
+          damagePlayer(7); // a través de la ventanilla
+          damageCar(player.inCar, 9, null);
+        } else {
+          damagePlayer(9);
+        }
+      }
     }
   }
   // separation
@@ -1072,6 +1151,10 @@ function updateZombies(dt){
 function getInteractables(){
   if (mode === 'city'){
     const list = [];
+    for (const b of buildings){
+      if (!b.door) continue;
+      list.push({ x: b.door.x, z: b.door.z, r: 2.6, label: 'Entrar al EDIFICIO [E]', type: 'benter', b });
+    }
     for (const s of shops){
       list.push({
         x: s.doorX, z: s.doorZ, r: 2.4,
@@ -1094,6 +1177,21 @@ function doInteract(){
   if (!curInteract) return;
   const it = curInteract;
   if (it.type === 'car'){ enterCar(it.car); return; }
+  if (it.type === 'benter'){
+    const bi = buildingInterior(it.b);
+    mode = 'building';
+    interiorItemsCache = bi.items;
+    interiorObs = bi.obs;
+    interiorGrounds = bi.grounds;
+    interiorDims = { RX: bi.RX, RZ: bi.RZ, stairs: bi.stairs };
+    curBldg = it.b;
+    player.prevX = player.x; player.prevZ = player.z;
+    player.x = bi.enterX; player.z = bi.enterZ; player.y = 0; player.vy = 0;
+    player.yawVis = 0; camYaw = 0;
+    sfx.door();
+    showMsg(bi.stairs ? 'EDIFICIO — escaleras a la izquierda, salida [E]' : 'EDIFICIO — salida [E]');
+    return;
+  }
   if (it.type === 'enter'){
     mode = it.kind === 'gun' ? 'gunshop' : 'medshop';
     const ii = shopInterior(it.kind);
@@ -1108,7 +1206,9 @@ function doInteract(){
   } else if (it.type === 'exit'){
     mode = 'city';
     player.x = player.prevX; player.z = player.prevZ;
+    player.y = 0; player.vy = 0;
     player.yawVis = Math.PI; camYaw = Math.PI;
+    interiorGrounds = []; curBldg = null; interiorDims = { RX: 11.4, RZ: 7.4, stairs: null };
     sfx.door();
   } else if (it.type === 'buyw'){
     if (player.weapons[it.w]){ showMsg('¡Ya tienes esta arma!'); sfx.deny(); return; }
@@ -1146,6 +1246,11 @@ function doInteract(){
   }
 }
 let interiorObs = [], interiorKind = 'gun';
+let interiorGrounds = [], interiorDims = { RX: 11.4, RZ: 7.4, stairs: null }, curBldg = null; // edificios: escaleras y medidas del interior
+function interiorBounds(){
+  if (mode === 'building') return { RX: interiorDims.RX, RZ: interiorDims.RZ };
+  return interiorKind === 'gun' ? { RX: 11.4, RZ: 7.4 } : { RX: 10.4, RZ: 6.4 };
+}
 
 /* ============ Update ============ */
 function update(dt){
@@ -1178,11 +1283,27 @@ function update(dt){
   if (timeNow - player.lastFire < 0.4) player.yawVis = camYaw;
   player.muzzleT -= dt;
 
-  // salto (Espacio)
+  // salto (Espacio) + escaleras de edificios (altura del suelo bajo los pies)
+  let gH = 0;
+  if (mode === 'building'){
+    const RBX = interiorBounds().RX, RBZ = interiorBounds().RZ; // posición ya limitada dentro del recinto
+    const pxq = Math.max(-RBX, Math.min(RBX, player.x));
+    const pzq = Math.max(-RBZ, Math.min(RBZ, player.z));
+    for (const g of interiorGrounds){
+      if (pxq >= g.x0 && pxq <= g.x1 && pzq >= g.z0 && pzq <= g.z1){
+        let h;
+        if (g.ramp){
+          const tt = Math.max(0, Math.min(1, (g.z1 - pzq) / (g.z1 - g.z0)));
+          h = g.hLow + (g.hHigh - g.hLow) * tt;
+        } else h = g.h;
+        if (player.y >= h - 2.2 && h > gH) gH = h; // alcanzable: subida de escalón
+      }
+    }
+  }
   player.vy -= 22 * dt;
   player.y += player.vy * dt;
-  if (player.y <= 0){ player.y = 0; player.vy = 0; }
-  if (keys.Space && player.y === 0){ player.vy = 7.2; player.y = 0.001; sfx.jump(); }
+  if (player.y <= gH){ player.y = gH; player.vy = 0; }
+  if (keys.Space && player.y <= gH + 0.001){ player.vy = 7.2; player.y = gH + 0.002; sfx.jump(); }
   }
 
   if (mode === 'city'){
@@ -1191,9 +1312,9 @@ function update(dt){
     player.z = Math.max(-HALF + 0.5, Math.min(HALF - 0.5, player.z));
   } else {
     // interior bounds
-    const RX = interiorKind === 'gun' ? 11.4 : 10.4, RZ = interiorKind === 'gun' ? 7.4 : 6.4;
-    player.x = Math.max(-RX, Math.min(RX, player.x));
-    player.z = Math.max(-RZ, Math.min(RZ, player.z));
+    const RBX = interiorBounds().RX, RBZ = interiorBounds().RZ;
+    player.x = Math.max(-RBX, Math.min(RBX, player.x));
+    player.z = Math.max(-RBZ, Math.min(RBZ, player.z));
     const saveObs = obstacles;
     for (const b of interiorObs){
       const rad = 0.45;
@@ -1353,7 +1474,7 @@ function gameOver(){
 const mm = document.getElementById('minimap'), mmx = mm.getContext('2d');
 function drawMinimap(){
   mmx.fillStyle = '#1c202a'; mmx.fillRect(0, 0, 150, 150);
-  if (mode !== 'city'){ mmx.fillStyle = '#888'; mmx.font = '11px monospace'; mmx.fillText('EN TIENDA', 38, 78); return; }
+  if (mode !== 'city'){ mmx.fillStyle = '#888'; mmx.font = '11px monospace'; mmx.fillText(mode === 'building' ? 'EDIFICIO' : 'EN TIENDA', 38, 78); return; }
   const s = 150 / CITY;
   // blocks
   mmx.fillStyle = '#333b47';
@@ -1412,6 +1533,9 @@ function drawHumanoid(x, z, yaw, o){
   boxRel(B, yaw, 0, 1.28 * s, 0, 0.56 * s, 0.9 * s, 0.34 * s, o.hitT > 0 ? [0.8, 0.3, 0.25] : o.shirt);
   // head
   boxRel(B, yaw, 0, 1.98 * s, 0, 0.42 * s, 0.42 * s, 0.42 * s, skin);
+  // ojos en la cara
+  boxRel(B, yaw, 0.09 * s, 2.0 * s, -0.22 * s, 0.075 * s, 0.05 * s, 0.04 * s, [0.06, 0.06, 0.08]);
+  boxRel(B, yaw, -0.09 * s, 2.0 * s, -0.22 * s, 0.075 * s, 0.05 * s, 0.04 * s, [0.06, 0.06, 0.08]);
   // cap/hair
   if (o.cap) boxRel(B, yaw, 0, 2.22 * s, 0, 0.46 * s, 0.12 * s, 0.46 * s, o.cap);
   else boxRel(B, yaw, 0, 2.2 * s, 0, 0.44 * s, 0.1 * s, 0.44 * s, [0.2, 0.15, 0.1]);
@@ -1566,6 +1690,10 @@ function render(){
         dying: z.state === 'dying', deathT: z.deathT,
       });
     }
+    // fogonazo del disparo policial
+    for (const z of zombies)
+      if (z.type === 'cop' && z.fireT > 0)
+        box(z.x - Math.sin(z.yaw) * 0.85, 1.5, z.z - Math.cos(z.yaw) * 0.85, 0.28, 0.28, 0.28, 0, [1, 0.9, 0.5], true);
     // peatones paseando por las aceras
     for (const q of peds){
       drawHumanoid(q.x, q.z, q.yaw, {
@@ -1575,6 +1703,41 @@ function render(){
       });
     }
   } else {
+    // ---- edificio (interior con escaleras) ----
+    if (mode === 'building'){
+      const RX = interiorDims.RX, RZ = interiorDims.RZ, WH = 4.4;
+      const wallC = (curBldg && curBldg.col) || [0.55, 0.55, 0.6];
+      const floorC = [0.42, 0.38, 0.34];
+      box(0, -0.02, 0, RX * 2, 0.08, RZ * 2, 0, floorC);
+      box(0, WH / 2, -RZ, RX * 2, WH, 0.5, 0, wallC);
+      box(-RX, WH / 2, 0, 0.5, WH, RZ * 2, 0, wallC);
+      box(RX, WH / 2, 0, 0.5, WH, RZ * 2, 0, wallC);
+      const gap = 2.2;
+      box(-(gap + (RX - gap) / 2), WH / 2, RZ, RX - gap, WH, 0.5, 0, wallC);
+      box((gap + (RX - gap) / 2), WH / 2, RZ, RX - gap, WH, 0.5, 0, wallC);
+      box(0, 0.06, RZ - 0.3, 3.2, 0.12, 1.4, 0, [1, 0.85, 0.4], true); // felpudo de salida
+      // pilares / muebles
+      for (const o of interiorObs) box((o.x0 + o.x1) / 2, o.h / 2, (o.z0 + o.z1) / 2, o.x1 - o.x0, o.h, o.z1 - o.z0, 0, [0.52, 0.47, 0.40]);
+      // escaleras al entresuelo (solo edificios altos)
+      const st = interiorDims.stairs;
+      if (st){
+        const steps = 8;
+        for (let i = 0; i < steps; i++){
+          const t0 = i / steps, t1 = (i + 1) / steps;
+          const zA = st.z1 + (st.z0 - st.z1) * t1, zB = st.z1 + (st.z0 - st.z1) * t0;
+          const hA = st.hHigh * t0;
+          box((st.x0 + st.x1) / 2, hA / 2, (zA + zB) / 2, st.x1 - st.x0, Math.max(0.1, hA), zB - zA + 0.03, 0, [0.56, 0.51, 0.43]);
+        }
+        // losa del entresuelo + barandilla + lámpara
+        box((st.px0 + st.px1) / 2, st.hh - 0.08, (st.pz0 + st.pz1) / 2, st.px1 - st.px0, 0.16, st.pz1 - st.pz0, 0, [0.48, 0.43, 0.36]);
+        box((st.px0 + st.px1) / 2, st.hh + 0.5, st.pz1 + 0.08, st.px1 - st.px0, 0.9, 0.12, 0, [0.85, 0.55, 0.18]);
+        box(-RX + 1.0, st.hh - 0.2, (st.pz0 + st.pz1) / 2, 1.6, 0.08, 0.4, 0, [1, 0.9, 0.6], true);
+      }
+      // ventanas iluminadas de la ciudad en las paredes
+      for (const s of [-1, 1]) for (let i = 0; i < 3; i++)
+        box(s * (RX - 0.24), 2.0, -RZ + 3 + i * (2 * RZ - 6) / 2, 0.1, 1.1, 1.3, 0, [0.9, 0.87, 0.72], true);
+      box(0, WH - 0.15, 0, 2.2, 0.08, 0.6, 0, [1, 0.95, 0.7], true); // lámpara de techo
+    } else {
     // ---- interior ----
     const isGun = mode === 'gunshop';
     const RX = isGun ? 12 : 11, RZ = isGun ? 8 : 7, WH = 4;
@@ -1647,6 +1810,7 @@ function render(){
     const M = mul(T(t.x0 + dx / 2, t.y0 + dy / 2, t.z0 + dz / 2),
                   mul(Ry(yaw), mul(Rx(rx), S(0.05, 0.05, len))));
     drawM(M, nmat(yaw, rx), [1, 0.95, 0.6], true);
+  }
   }
   // particles
   for (const p of particles) box(p.x, p.y, p.z, p.s, p.s, p.s, 0, p.col);
